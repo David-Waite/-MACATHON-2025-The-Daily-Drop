@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { auth } from "../firebase";
 import { NavLink } from "react-router";
+import { useNavigate } from "react-router-dom"; // Correct import
 
 // Define the props interface if using TypeScript (optional but good practice)
 // interface LoginPageProps {
@@ -13,6 +14,7 @@ import { NavLink } from "react-router";
 // function LoginPage({ switchToSignUp, onLoginSuccess }: LoginPageProps) { // TypeScript version
 function LoginPage({ switchToSignUp, onLoginSuccess }) {
   // JavaScript version
+  const navigate = useNavigate();
 
   // State hooks for email and password input fields
   const [email, setEmail] = useState("");
@@ -40,19 +42,21 @@ function LoginPage({ switchToSignUp, onLoginSuccess }) {
         email,
         password
       );
-      console.log("User logged in:", userCredential.user.uid);
-
-      // Login successful!
-      // Reset state
+      const user = userCredential.user;
+    
       setLoading(false);
       setEmail("");
       setPassword("");
-
+      if (user.email === "admin@gmail.com") {
+        navigate("/admin");
+      } else {
+        navigate("/map");
+      }
       // Optional: Call a success handler passed via props if needed
       if (onLoginSuccess) {
         onLoginSuccess();
       }
-
+      
       // NOTE: Typically, you wouldn't handle redirection *here*.
       // The standard pattern is to have an `onAuthStateChanged` listener
       // in your main App component or routing setup. When Firebase detects

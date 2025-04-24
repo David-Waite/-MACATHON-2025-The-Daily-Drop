@@ -7,7 +7,7 @@ import {
 } from "@react-google-maps/api";
 
 // --- Firebase Imports ---
-import { db } from "../firebase"; // Adjust path
+import { db } from "../firebase";
 import {
   collection,
   query,
@@ -16,9 +16,10 @@ import {
   Timestamp,
   GeoPoint,
 } from "firebase/firestore";
+import { getAuth, signOut } from "firebase/auth"; // Import Firebase Auth
+import { useNavigate } from "react-router-dom"; // For redirect after logout
 
-// --- Geolocation Helper (Haversine formula) ---
-// (Same function as before)
+// --- Geolocation Helper ---
 function getDistanceFromLatLonInKm(lat1, lon1, lat2, lon2) {
   const R = 6371; // Radius of the earth in km
   const dLat = deg2rad(lat2 - lat1);
@@ -43,52 +44,39 @@ const containerStyle = {
   height: "100vh",
 };
 
-// Optional: Add custom map styles from https://mapstyle.withgoogle.com/
-// Or hide Points of Interest, etc.
 const mapOptions = {
-  // styles: customMapStyles, // Your custom style array
-  disableDefaultUI: true, // Hide default controls like zoom, street view
-  zoomControl: true, // Optionally re-enable zoom
-  clickableIcons: false, // Prevent clicking on Google's default POIs
+  disableDefaultUI: true,
+  zoomControl: true,
+  clickableIcons: false,
 };
 
-const libraries = ["places"]; // Optional: Add other libraries if needed
+const libraries = ["places"];
 
 function MapComponent({ userId }) {
-  const [userPosition, setUserPosition] = useState(null); // { lat: number, lng: number }
-  const [drops, setDrops] = useState([]); // Array of drop objects
-  const [selectedDrop, setSelectedDrop] = useState(null); // Track which InfoWindow to show
-  const [map, setMap] = useState(null); // Reference to map instance
+  const [userPosition, setUserPosition] = useState(null);
+  const [drops, setDrops] = useState([]);
+  const [selectedDrop, setSelectedDrop] = useState(null);
+  const [map, setMap] = useState(null);
 
-  // Default center (West Melbourne, VIC) - Use your uni's coords ideally
   const defaultCenter = { lat: -37.8111, lng: 144.9469 };
-
   const DISTANCE_THRESHOLD_METERS = 30;
 
-  useEffect(() => {
-    const watchId = navigator.geolocation.watchPosition(
-      (position) => {
-        const { latitude, longitude, accuracy } = position.coords; // Get accuracy
-        console.log(`Position accuracy: ${accuracy} meters`); // Log it
-        setUserPosition({ lat: latitude, lng: longitude });
-        // Optional: You could display the accuracy radius visually on the map
-        // Or disable actions if accuracy > threshold (e.g., > 50 meters)
-      },
-      (error) => {
-        console.error("Error getting user location:", error);
-      },
-      { enableHighAccuracy: true }
-    );
-    return () => navigator.geolocation.clearWatch(watchId);
-  }, []);
-  // --- 1. Load Google Maps JavaScript API ---
-  const { isLoaded, loadError } = useJsApiLoader({
-    id: "google-map-script",
-    googleMapsApiKey: process.env.REACT_APP_Maps_API_KEY, // Your key from .env.local
-    libraries: libraries,
-  });
+  const navigate = useNavigate(); // For redirect after logout
 
-  // --- 2. Get User's Location ---
+  // --- Logout Function ---
+  const handleLogout = () => {
+    const auth = getAuth();
+    signOut(auth)
+      .then(() => {
+        console.log("User signed out");
+        navigate("/login"); // Redirect to login page
+      })
+      .catch((error) => {
+        console.error("Error signing out:", error);
+      });
+  };
+
+  // --- User Location ---
   useEffect(() => {
     const watchId = navigator.geolocation.watchPosition(
       (position) => {
@@ -97,21 +85,27 @@ function MapComponent({ userId }) {
       },
       (error) => {
         console.error("Error getting user location:", error);
-        // Handle case where location is denied - maybe center on default location
         if (!userPosition) {
-          setUserPosition(defaultCenter); // Fallback to default center maybe?
+          setUserPosition(defaultCenter);
         }
       },
       { enableHighAccuracy: true }
     );
-    return () => navigator.geolocation.clearWatch(watchId); // Cleanup
-  }, []); // Empty dependency array
+    return () => navigator.geolocation.clearWatch(watchId);
+  }, []);
 
-  // --- 3. Fetch Active Drops from Firestore ---
+  // --- Google Maps API Loader ---
+  const { isLoaded, loadError } = useJsApiLoader({
+    id: "google-map-script",
+    googleMapsApiKey: process.env.REACT_APP_Maps_API_KEY,
+    libraries: libraries,
+  });
+
+  // --- Fetch Active Drops ---
   useEffect(() => {
     const dropsRef = collection(db, "drops");
     const now = Timestamp.now();
-    const q = query(dropsRef, where("startTime", "<=", now)); // Filter startTime
+    const q = query(dropsRef, where("startTime", "<=", now));
 
     const unsubscribe = onSnapshot(
       q,
@@ -119,24 +113,19 @@ function MapComponent({ userId }) {
         const activeDrops = [];
         querySnapshot.forEach((doc) => {
           const dropData = doc.data();
-          // Client-side filter for endTime
           if (dropData.endTime && dropData.endTime >= now) {
             if (dropData.location instanceof GeoPoint) {
               activeDrops.push({
                 id: doc.id,
                 ...dropData,
-                // Convert GeoPoint for Google Maps
                 position: {
                   lat: dropData.location.latitude,
                   lng: dropData.location.longitude,
                 },
               });
-            } else {
-              console.warn(`Drop ${doc.id} has invalid location format.`);
             }
           }
         });
-        console.log("Active Drops:", activeDrops);
         setDrops(activeDrops);
       },
       (error) => {
@@ -144,16 +133,13 @@ function MapComponent({ userId }) {
       }
     );
 
-    return () => unsubscribe(); // Cleanup listener
+    return () => unsubscribe();
   }, []);
 
-  // --- 4. Handle Drop Interaction ---
+  // --- Capture Attempt ---
   const handleCaptureAttempt = (dropPosition) => {
     if (!userPosition || userPosition === defaultCenter) {
-      // Check if we have a real user position
-      alert(
-        "Could not get your current location. Please enable location services."
-      );
+      alert("Could not get your current location. Please enable location services.");
       return;
     }
 
@@ -164,103 +150,87 @@ function MapComponent({ userId }) {
       dropPosition.lng
     );
 
-    console.log(`Distance to drop: ${distance.toFixed(2)} meters`);
-
     if (distance <= DISTANCE_THRESHOLD_METERS) {
       alert("You are close enough! Trigger photo upload here.");
-      // --- TRIGGER YOUR PHOTO UPLOAD LOGIC ---
+      // TRIGGER PHOTO UPLOAD LOGIC HERE
     } else {
       alert(`Too far! Get within ${DISTANCE_THRESHOLD_METERS} meters.`);
     }
   };
 
-  // --- Map Callbacks ---
   const onLoad = useCallback(
     function callback(mapInstance) {
-      // Center map initially, perhaps on user position if available, else default
       const initialCenter = userPosition || defaultCenter;
       mapInstance.setCenter(initialCenter);
-      mapInstance.setZoom(16); // Adjust zoom level
-      setMap(mapInstance); // Store map instance if needed
+      mapInstance.setZoom(16);
+      setMap(mapInstance);
     },
     [userPosition, defaultCenter]
-  ); // Re-run if userPosition changes before load
+  );
 
   const onUnmount = useCallback(function callback(map) {
     setMap(null);
   }, []);
 
-  // --- Render Logic ---
   if (loadError) {
     return (
       <div>
-        Error loading maps: {loadError.message} <br /> Make sure your API key is
-        correct and billing is enabled.
+        Error loading maps: {loadError.message} <br /> Make sure your API key is correct and billing is enabled.
       </div>
     );
   }
 
   if (!isLoaded) {
-    return <div>Loading Map...</div>; // Or a loading spinner
+    return <div>Loading Map...</div>;
   }
 
   return (
-    <GoogleMap
-      mapContainerStyle={containerStyle}
-      //   center={userPosition || defaultCenter} // Center map on user or default
-      zoom={16} // Initial zoom
-      options={mapOptions}
-      onLoad={onLoad}
-      onUnmount={onUnmount}
-      center={{ lat: -37.8106, lng: 144.9545 }}
-    >
-      {/* User Marker */}
-      {userPosition &&
-        userPosition !== defaultCenter && ( // Only show if real position found
-          <MarkerF
-            position={userPosition}
-            title={"You are here"}
-            // Optional: Add a custom icon for the user
-            // icon={{ url: '/path/to/user-icon.png', scaledSize: new window.google.maps.Size(30, 30) }}
-          />
+    <>
+      {/* --- Logout Button --- */}
+      <div style={{ position: "absolute", top: 10, right: 10, zIndex: 999 }}>
+        <button onClick={handleLogout}>Log Out</button>
+      </div>
+
+      <GoogleMap
+        mapContainerStyle={containerStyle}
+        zoom={16}
+        options={mapOptions}
+        onLoad={onLoad}
+        onUnmount={onUnmount}
+        center={{ lat: -37.8106, lng: 144.9545 }}
+      >
+        {userPosition && userPosition !== defaultCenter && (
+          <MarkerF position={userPosition} title={"You are here"} />
         )}
 
-      {/* Drop Markers */}
-      {drops.map((drop) => (
-        <MarkerF
-          key={drop.id}
-          position={drop.position}
-          //   title={drop.name || "Unnamed Drop"}
-          // Optional: Custom drop icon
-          // icon={{ url: drop.iconUrl || '/path/to/default-drop-icon.png', scaledSize: new window.google.maps.Size(40, 40) }}
-          onClick={() => {
-            setSelectedDrop(drop); // Set this drop as selected to show InfoWindow
-          }}
-        />
-      ))}
+        {drops.map((drop) => (
+          <MarkerF
+            key={drop.id}
+            position={drop.position}
+            onClick={() => {
+              setSelectedDrop(drop);
+            }}
+          />
+        ))}
 
-      {/* InfoWindow for Selected Drop */}
-      {selectedDrop && (
-        <InfoWindowF
-          position={selectedDrop.position}
-          onCloseClick={() => {
-            setSelectedDrop(null); // Clear selection when closing InfoWindow
-          }}
-        >
-          <div>
-            <h4>{selectedDrop.name || "Unnamed Drop"}</h4>
-            {/* Optional: Add description or image */}
-            {/* <img src={selectedDrop.imageUrl} width="50" alt="drop"/> */}
-            <p>
-              Expires at: {selectedDrop.endTime?.toDate().toLocaleTimeString()}
-            </p>
-            <button onClick={() => handleCaptureAttempt(selectedDrop.position)}>
-              Attempt Capture
-            </button>
-          </div>
-        </InfoWindowF>
-      )}
-    </GoogleMap>
+        {selectedDrop && (
+          <InfoWindowF
+            position={selectedDrop.position}
+            onCloseClick={() => {
+              setSelectedDrop(null);
+            }}
+          >
+            <div>
+              <h4>{selectedDrop.name || "Unnamed Drop"}</h4>
+              <p>Expires at: {selectedDrop.endTime?.toDate().toLocaleTimeString()}</p>
+              <button onClick={() => handleCaptureAttempt(selectedDrop.position)}>
+                Attempt Capture
+              </button>
+            </div>
+          </InfoWindowF>
+        )}
+      </GoogleMap>
+    </>
   );
 }
 

@@ -18,7 +18,6 @@ import { ProtectedRoute } from "./routes/ProtectedRoute";
 import { PublicRoute } from "./routes/PublicRoute";
 import MapComponent from "./components/MapComponent";
 import AdminDashboard from "./components/AdminDashboard";
-import { AdminProtectedRoute } from "./routes/AdminProtectedRoute";
 
 const root = ReactDOM.createRoot(document.getElementById("root"));
 
@@ -37,16 +36,10 @@ root.render(
           {/* This checks if user is logged in */}
           {/* Routes rendered via <Outlet /> inside ProtectedRoute if auth check passes */}
           <Route path="/map" element={<MapComponent />} />
+          <Route path="/admin" element={<AdminDashboard />} />
           <Route path="/leaderboard" element={<LeaderboardPage />} />{" "}
           {/* <--- Add this line */}
           {/* Add any other protected routes here */}
-        </Route>
-        {/* Admin Only Protected Route */}
-        <Route element={<AdminProtectedRoute />}>
-          {" "}
-          {/* <--- Use the specific admin protector */}
-          <Route path="/admin" element={<AdminDashboard />} />
-          {/* Add any other admin-only routes here */}
         </Route>
         {/* Optional: Catch-all route */}
         {/* <Route path="*" element={<NotFoundPage />} /> */}

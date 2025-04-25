@@ -37,7 +37,7 @@ root.render(
           {/* Routes rendered via <Outlet /> inside ProtectedRoute if auth check passes */}
           {/* <Route path="/map" element={<MapComponent />} /> */}
           <Route path="/map" element={<MapPage />} />
-
+          <Route path="/leaderboard" element={<LeaderboardPage />} />{" "}
           {/* <--- Add this line */}
           {/* Add any other protected routes here */}
         </Route>

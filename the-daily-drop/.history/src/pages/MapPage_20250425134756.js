@@ -21,7 +21,7 @@ import {
   getDownloadURL,
 } from "firebase/storage";
 import { db, storage, auth } from "../firebase"; // Ensure auth is imported correctly
-import { FaTrophy } from "react-icons/fa";
+
 // Import the map display component
 import MapComponent from "../components/MapComponent"; // Adjust path if needed
 
@@ -187,9 +187,7 @@ function MapPage() {
           alert("You have already captured this drop!");
         } else {
           // Not submitted yet, trigger photo input
-          console.log(
-            "User is close enough and hasn't submitted. Triggering photo input."
-          );
+          console.log("User is close enough and hasn't submitted. Triggering photo input.");
           setDropToSubmit(dropData); // Store drop info for when file is selected
           fileInputRef.current?.click(); // Use optional chaining
         }
@@ -213,10 +211,7 @@ function MapPage() {
 
     if (!file || !dropToSubmit || !user) {
       console.error("File, drop info, or user missing for upload.");
-      if (!dropToSubmit)
-        alert(
-          "Could not determine which drop to submit for. Please try capturing again."
-        );
+      if (!dropToSubmit) alert("Could not determine which drop to submit for. Please try capturing again.");
       setDropToSubmit(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
       return;
@@ -253,8 +248,7 @@ function MapPage() {
     uploadTask.on(
       "state_changed",
       (snapshot) => {
-        const progress =
-          (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+        const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
         console.log("Upload is " + progress + "% done");
       },
       (error) => {
@@ -283,10 +277,7 @@ function MapPage() {
           alert("Drop captured successfully!");
           setSelectedDrop(null); // Close the InfoWindow
         } catch (firestoreError) {
-          console.error(
-            "Error adding submission to Firestore:",
-            firestoreError
-          );
+          console.error("Error adding submission to Firestore:", firestoreError);
           alert(`Capture failed (database error): ${firestoreError.message}`);
           // Consider how to handle this - maybe delete the uploaded photo?
         } finally {
@@ -308,23 +299,8 @@ function MapPage() {
       <div style={{ position: "absolute", top: 10, right: 10, zIndex: 10 }}>
         <button onClick={handleLogout}>Log Out</button>
       </div>
-      {/* --- Leaderboard button --- */}
-      <div
-        onClick={handleGoToLeaderboard}
-        style={{
-          position: "absolute",
-          bottom: 14,
-          right: 14,
-          zIndex: 999,
-          backgroundColor: "#6F42C1",
-          padding: 16,
-          borderRadius: "50%",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <FaTrophy color="white" size={24} />
+      <div style={{ position: "absolute", bottom: 10, right: 10, zIndex: 10 }}>
+        <button onClick={handleGoToLeaderboard}>Leaderboard</button>
       </div>
 
       {/* Hidden File Input */}

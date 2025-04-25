@@ -21,7 +21,7 @@ import {
   getDownloadURL,
 } from "firebase/storage";
 import { db, storage, auth } from "../firebase"; // Ensure auth is imported correctly
-import { FaTrophy } from "react-icons/fa";
+
 // Import the map display component
 import MapComponent from "../components/MapComponent"; // Adjust path if needed
 
@@ -310,7 +310,7 @@ function MapPage() {
       </div>
       {/* --- Leaderboard button --- */}
       <div
-        onClick={handleGoToLeaderboard}
+        onClick={handleGoToleaderboard}
         style={{
           position: "absolute",
           bottom: 14,

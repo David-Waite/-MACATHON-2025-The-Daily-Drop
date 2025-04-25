@@ -15,7 +15,9 @@ const containerStyle = {
 
 const mapOptions = {
   disableDefaultUI: true,
+
   keyboardShortcuts: false,
+
   clickableIcons: false,
 };
 

@@ -3,7 +3,7 @@ import { getAuth, onAuthStateChanged } from "firebase/auth";
 import { useNavigate } from "react-router-dom"; // Or 'react-router'
 
 // Define the specific Admin User ID as a constant
-const ADMIN_UID = process.env.REACT_APP_ADMIN_UID;
+const ADMIN_UID = "NIGUD4ulXwgf3T6oMNe5ip4tlmh2";
 
 function App() {
   const auth = getAuth(); // Get the auth instance (ensure Firebase is initialized)

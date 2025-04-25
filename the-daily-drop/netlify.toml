@@ -1,0 +1,11 @@
+# netlify.toml
+
+[build]
+  command = "npm run build"  # Or yarn build
+  publish = "build"         # Or dist if using Vite
+
+# Rewrite rule for Single Page Applications (SPAs)
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

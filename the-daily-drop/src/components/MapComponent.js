@@ -1,237 +1,437 @@
-import React, { useState, useEffect, useCallback } from "react";
+// src/components/MapComponent.js
+
+import React, {
+  useState,
+  useEffect, // <-- Re-added useEffect for the countdown
+  useRef,
+  useCallback,
+  useMemo,
+} from "react";
 import {
   GoogleMap,
   useJsApiLoader,
   MarkerF,
-  InfoWindowF,
+  CircleF,
+  OverlayView,
+  OverlayViewF,
 } from "@react-google-maps/api";
 
-// --- Firebase Imports ---
-import { db } from "../firebase";
-import {
-  collection,
-  query,
-  where,
-  onSnapshot,
-  Timestamp,
-  GeoPoint,
-} from "firebase/firestore";
-import { getAuth, signOut } from "firebase/auth"; // Import Firebase Auth
-import { useNavigate } from "react-router-dom"; // For redirect after logout
-
-// --- Geolocation Helper ---
-function getDistanceFromLatLonInKm(lat1, lon1, lat2, lon2) {
-  const R = 6371; // Radius of the earth in km
-  const dLat = deg2rad(lat2 - lat1);
-  const dLon = deg2rad(lon2 - lon1);
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(deg2rad(lat1)) *
-      Math.cos(deg2rad(lat2)) *
-      Math.sin(dLon / 2) *
-      Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  const d = R * c; // Distance in km
-  return d * 1000; // Distance in meters
-}
-function deg2rad(deg) {
-  return deg * (Math.PI / 180);
-}
-
-// --- Map Styling & Configuration ---
-const containerStyle = {
-  width: "100%",
-  height: "100vh",
-};
-
-const mapOptions = {
+// --- Constants, Styles, etc. ---
+const containerStyle = { width: "100%", height: "100%" };
+const baseMapOptions = {
   disableDefaultUI: true,
-  zoomControl: true,
+  keyboardShortcuts: false,
   clickableIcons: false,
 };
-
+const circleOptions = {
+  strokeColor: "#8AB4F8",
+  strokeOpacity: 0.6,
+  strokeWeight: 1,
+  fillColor: "#8AB4F8",
+  fillOpacity: 0.2,
+  clickable: false,
+  draggable: false,
+  editable: false,
+  visible: true,
+  zIndex: 1,
+};
 const libraries = ["places"];
 
-function MapComponent({ userId }) {
-  const [userPosition, setUserPosition] = useState(null);
-  const [drops, setDrops] = useState([]);
-  const [selectedDrop, setSelectedDrop] = useState(null);
-  const [map, setMap] = useState(null);
+// --- Helper function to format countdown time ---
+function formatTimeDifference(ms) {
+  if (ms <= 0) {
+    return "Expired";
+  }
 
-  const defaultCenter = { lat: -37.8111, lng: 144.9469 };
-  const DISTANCE_THRESHOLD_METERS = 30;
+  const totalSeconds = Math.floor(ms / 1000);
+  const seconds = totalSeconds % 60;
+  const totalMinutes = Math.floor(totalSeconds / 60);
+  const minutes = totalMinutes % 60;
+  const hours = Math.floor(totalMinutes / 60);
 
-  const navigate = useNavigate(); // For redirect after logout
+  let parts = [];
+  if (hours > 0) parts.push(`${hours}h`);
+  if (minutes > 0 || hours > 0) parts.push(`${minutes}m`); // Show minutes if hours > 0
+  parts.push(`${seconds}s`);
 
-  // --- Logout Function ---
-  const handleLogout = () => {
-    const auth = getAuth();
-    signOut(auth)
-      .then(() => {
-        console.log("User signed out");
-        navigate("/login"); // Redirect to login page
-      })
-      .catch((error) => {
-        console.error("Error signing out:", error);
-      });
-  };
+  return `${parts.join(" ")}`;
+}
 
-  // --- User Location ---
-  useEffect(() => {
-    const watchId = navigator.geolocation.watchPosition(
-      (position) => {
-        const { latitude, longitude } = position.coords;
-        setUserPosition({ lat: latitude, lng: longitude });
-      },
-      (error) => {
-        console.error("Error getting user location:", error);
-        if (!userPosition) {
-          setUserPosition(defaultCenter);
-        }
-      },
-      { enableHighAccuracy: true }
-    );
-    return () => navigator.geolocation.clearWatch(watchId);
-  }, []);
-
-  // --- Google Maps API Loader ---
+function MapComponent({
+  userPosition,
+  userAccuracy,
+  drops = [],
+  selectedDrop,
+  onDropClick,
+  onInfoWindowClose,
+  onCaptureAttempt,
+  isUploading,
+  center,
+  zoom,
+  defaultCenter,
+  onMapClick,
+  onImageChange,
+  selectedImageFile,
+}) {
   const { isLoaded, loadError } = useJsApiLoader({
     id: "google-map-script",
     googleMapsApiKey: process.env.REACT_APP_Maps_API_KEY,
     libraries: libraries,
   });
 
-  // --- Fetch Active Drops ---
-  useEffect(() => {
-    const dropsRef = collection(db, "drops");
-    const now = Timestamp.now();
-    const q = query(dropsRef, where("startTime", "<=", now));
+  const mapRef = useRef(null);
+  const [countdownText, setCountdownText] = useState(""); // State for the countdown display
+  const intervalRef = useRef(null); // Ref to store interval ID
 
-    const unsubscribe = onSnapshot(
-      q,
-      (querySnapshot) => {
-        const activeDrops = [];
-        querySnapshot.forEach((doc) => {
-          const dropData = doc.data();
-          if (dropData.endTime && dropData.endTime >= now) {
-            if (dropData.location instanceof GeoPoint) {
-              activeDrops.push({
-                id: doc.id,
-                ...dropData,
-                position: {
-                  lat: dropData.location.latitude,
-                  lng: dropData.location.longitude,
-                },
-              });
-            }
-          }
-        });
-        setDrops(activeDrops);
-      },
-      (error) => {
-        console.error("Error fetching drops:", error);
-      }
-    );
-
-    return () => unsubscribe();
+  // --- Callbacks ---
+  const onLoad = useCallback((mapInstance) => {
+    mapRef.current = mapInstance;
+    console.log("Map loaded.");
   }, []);
 
-  // --- Capture Attempt ---
-  const handleCaptureAttempt = (dropPosition) => {
-    if (!userPosition || userPosition === defaultCenter) {
-      alert("Could not get your current location. Please enable location services.");
-      return;
-    }
-
-    const distance = getDistanceFromLatLonInKm(
-      userPosition.lat,
-      userPosition.lng,
-      dropPosition.lat,
-      dropPosition.lng
-    );
-
-    if (distance <= DISTANCE_THRESHOLD_METERS) {
-      alert("You are close enough! Trigger photo upload here.");
-      // TRIGGER PHOTO UPLOAD LOGIC HERE
-    } else {
-      alert(`Too far! Get within ${DISTANCE_THRESHOLD_METERS} meters.`);
-    }
+  const hiddenInputStyle = {
+    position: "absolute",
+    width: "1px",
+    height: "1px",
+    padding: 0,
+    margin: "-1px", // Offset to ensure it's truly off-screen
+    overflow: "hidden",
+    clip: "rect(0, 0, 0, 0)", // Clip visibility
+    whiteSpace: "nowrap", // Prevent line wrapping affecting layout
+    borderWidth: 0, // No border
   };
 
-  const onLoad = useCallback(
-    function callback(mapInstance) {
-      const initialCenter = userPosition || defaultCenter;
-      mapInstance.setCenter(initialCenter);
-      mapInstance.setZoom(16);
-      setMap(mapInstance);
-    },
-    [userPosition, defaultCenter]
-  );
+  const buttonLabelStyle = {
+    display: "block", // Make it block-level to take full width easily
+    width: "100%", // Occupy full width of its container
+    paddingTop: "8px", // Vertical padding
+    paddingBottom: "8px",
+    paddingLeft: "12px", // Horizontal padding
+    paddingRight: "12px",
+    // --- Conditional Background Color ---
+    backgroundColor: isUploading
+      ? "#a381d6" // Lighter purple when uploading (disabled look)
+      : selectedImageFile
+      ? "#5a3c9e" // Darker purple when ready to capture (indicates action change)
+      : "#6F42C1", // Default purple when asking to select
+    border: "none", // No border
+    color: "white", // Text color
+    borderRadius: 15, // Rounded corners
+    textAlign: "center", // Center the text
+    // --- Conditional Cursor ---
+    cursor: isUploading ? "not-allowed" : "pointer", // Indicate non-interactive state
+    fontSize: "16px", // Adjust as needed
+    fontWeight: "bold", // Adjust as needed
+    // --- Conditional Opacity ---
+    opacity: isUploading ? 0.7 : 1, // Dim when uploading
+    userSelect: "none", // Prevent text selection on clicking the label
+    boxSizing: "border-box", // Include padding/border in width calculation
+  };
 
-  const onUnmount = useCallback(function callback(map) {
-    setMap(null);
+  const onUnmount = useCallback(() => {
+    mapRef.current = null;
+    if (intervalRef.current) {
+      // Clear interval on unmount
+      clearInterval(intervalRef.current);
+    }
+    console.log("Map unmounted.");
   }, []);
 
-  if (loadError) {
-    return (
-      <div>
-        Error loading maps: {loadError.message} <br /> Make sure your API key is correct and billing is enabled.
-      </div>
-    );
-  }
+  // --- Countdown Timer Effect ---
+  useEffect(() => {
+    // Clear any existing interval when selectedDrop changes or component unmounts
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
 
-  if (!isLoaded) {
-    return <div>Loading Map...</div>;
-  }
+    // Start a new interval only if a drop with an endTime is selected
+    if (selectedDrop && selectedDrop.endTime) {
+      const endTimeDate = selectedDrop.endTime.toDate(); // Convert Firestore Timestamp to JS Date
+
+      const updateCountdown = () => {
+        const now = new Date();
+        const diff = endTimeDate.getTime() - now.getTime(); // Difference in milliseconds
+
+        setCountdownText(formatTimeDifference(diff)); // Update state with formatted time
+
+        if (diff <= 0) {
+          clearInterval(intervalRef.current); // Stop interval when expired
+          intervalRef.current = null;
+        }
+      };
+
+      updateCountdown(); // Initial update immediately
+      intervalRef.current = setInterval(updateCountdown, 1000); // Update every second
+    } else {
+      setCountdownText(""); // Clear text if no drop is selected or no endTime
+    }
+
+    // Cleanup function for the effect
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    };
+  }, [selectedDrop]); // Rerun effect when selectedDrop changes
+
+  // --- Dynamic Map Options ---
+  const mapOptions = useMemo(
+    () => ({
+      ...baseMapOptions,
+      draggable: !selectedDrop,
+    }),
+    [selectedDrop]
+  );
+
+  // --- OverlayView Positioning ---
+  const getPixelPositionOffset = useCallback((offsetWidth, offsetHeight) => {
+    return { x: -(offsetWidth / 2), y: -(offsetHeight + 44) };
+  }, []);
+
+  // --- Event Handler Helper ---
+  const stopPropagation = useCallback((e) => {
+    e.stopPropagation();
+  }, []);
+
+  // --- Render Logic ---
+  if (loadError) return <div>Error loading map: {loadError.message}</div>;
+  if (!isLoaded) return <div>Loading Map...</div>;
+
+  const mapCenter = center || defaultCenter;
+  const userLocationIcon = {
+    path: window.google.maps.SymbolPath.CIRCLE,
+    scale: 8,
+    fillColor: "#1976D2",
+    fillOpacity: 1.0,
+    strokeColor: "#ffffff",
+    strokeWeight: 2,
+    anchor: new window.google.maps.Point(0, 0),
+  };
+  const customDropIcon = {
+    url: "/icons/giftPin.png",
+    scaledSize: new window.google.maps.Size(30, 40),
+    origin: new window.google.maps.Point(0, 0),
+    anchor: new window.google.maps.Point(15, 40),
+  };
 
   return (
-    <>
-      {/* --- Logout Button --- */}
-      <div style={{ position: "absolute", top: 10, right: 10, zIndex: 999 }}>
-        <button onClick={handleLogout}>Log Out</button>
-      </div>
-
-      <GoogleMap
-        mapContainerStyle={containerStyle}
-        zoom={16}
-        options={mapOptions}
-        onLoad={onLoad}
-        onUnmount={onUnmount}
-        center={{ lat: -37.8106, lng: 144.9545 }}
-      >
-        {userPosition && userPosition !== defaultCenter && (
-          <MarkerF position={userPosition} title={"You are here"} />
-        )}
-
-        {drops.map((drop) => (
+    <GoogleMap
+      mapContainerStyle={containerStyle}
+      center={mapCenter}
+      zoom={zoom}
+      options={mapOptions}
+      onLoad={onLoad}
+      onUnmount={onUnmount}
+      onClick={onMapClick}
+    >
+      {/* === User Location Rendering === */}
+      {userPosition && (
+        <>
+          {typeof userAccuracy === "number" && userAccuracy > 0 && (
+            <CircleF
+              center={userPosition}
+              radius={userAccuracy}
+              options={circleOptions}
+            />
+          )}
           <MarkerF
-            key={drop.id}
-            position={drop.position}
-            onClick={() => {
-              setSelectedDrop(drop);
-            }}
+            position={userPosition}
+            title={"You are here"}
+            icon={userLocationIcon}
+            zIndex={5}
           />
-        ))}
+        </>
+      )}
 
-        {selectedDrop && (
-          <InfoWindowF
-            position={selectedDrop.position}
-            onCloseClick={() => {
-              setSelectedDrop(null);
+      {/* Drop Markers */}
+      {drops.map((drop) => (
+        <MarkerF
+          key={drop.id}
+          position={drop.position}
+          title={drop.name || "Unnamed Drop"}
+          icon={customDropIcon}
+          onClick={() => onDropClick(drop)}
+          zIndex={3}
+        />
+      ))}
+
+      {/* Selected Drop OverlayView */}
+      {selectedDrop && selectedDrop.position && (
+        <OverlayViewF
+          position={selectedDrop.position}
+          mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}
+          getPixelPositionOffset={getPixelPositionOffset}
+        >
+          <div
+            style={{
+              background: "white",
+              padding: "15px",
+              zIndex: 1000,
+              borderRadius: "8px",
+              boxShadow: "0 2px 7px 1px rgba(0, 0, 0, 0.3)",
+              width: "calc(100vw - 40px)",
+              height: "calc(100vw - 40px)",
+
+              maxWidth: "600px",
+              maxHeight: "600px",
+              position: "relative",
+              overflow: "auto",
             }}
+            onClick={stopPropagation}
+            onMouseDown={stopPropagation}
+            onMouseUp={stopPropagation}
+            onTouchStart={stopPropagation}
+            onTouchEnd={stopPropagation}
+            onPointerDown={stopPropagation}
+            onPointerUp={stopPropagation}
           >
-            <div>
-              <h4>{selectedDrop.name || "Unnamed Drop"}</h4>
-              <p>Expires at: {selectedDrop.endTime?.toDate().toLocaleTimeString()}</p>
-              <button onClick={() => handleCaptureAttempt(selectedDrop.position)}>
-                Attempt Capture
-              </button>
+            {/* Close button */}
+            <button
+              onClick={onInfoWindowClose}
+              style={{
+                position: "absolute",
+                top: "0px",
+                right: "0px",
+                background: "transparent",
+                border: "none",
+                fontSize: "18px",
+                fontWeight: "bold",
+                color: "#555",
+                cursor: "pointer",
+                padding: "5px",
+                lineHeight: "1",
+                zIndex: 1,
+              }}
+              aria-label="Close"
+            >
+              &times;
+            </button>
+
+            {/* Content */}
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                justifyContent: "space-between",
+                height: "100%",
+              }}
+            >
+              <div>
+                {selectedDrop.imageUrl && (
+                  <img
+                    src={selectedDrop.imageUrl}
+                    alt={selectedDrop.name || "Drop image"}
+                    style={{
+                      width: "100%",
+                      height: "calc(100vw - 140px)",
+                      maxHeight: "500px",
+                      objectFit: "cover",
+                      marginBottom: "10px",
+                      borderRadius: "4px",
+                      display: "block",
+                    }}
+                    onError={(e) => {
+                      e.target.style.display = "none";
+                    }}
+                  />
+                )}
+                <h4
+                  style={{
+                    marginTop: 0,
+
+                    marginBottom: "8px",
+                    fontSize: "16px", // Increased font size
+                    fontWeight: "100",
+                    paddingRight: "25px",
+                  }}
+                >
+                  {selectedDrop.name || "Unnamed Drop"}
+                </h4>
+              </div>
+              <div>
+                <div
+                  style={{
+                    display: "flex",
+
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: "#495057",
+                    }}
+                  >
+                    <p
+                      style={{
+                        fontSize: "24px",
+                        fontWeight: 1000,
+                      }}
+                    >
+                      {countdownText || "Loading..."}{" "}
+                      {/* Display countdown state or loading */}
+                    </p>
+                  </div>
+                  <div>
+                    {/* 1. Hidden actual file input */}
+                    <input
+                      type="file"
+                      accept="image/*" // Only allow image files
+                      onChange={onImageChange} // Calls parent handler when a file is selected
+                      id="hidden-file-input" // Unique ID for the label to reference
+                      style={hiddenInputStyle} // Apply styles to hide it
+                      disabled={isUploading} // Disable if uploading
+                      // Note: If you have issues re-selecting the *same* file, you might need
+                      // to clear this input's value when `selectedImageFile` becomes null.
+                      // This usually involves a ref and an effect, but often just clearing
+                      // the parent state (`selectedImageFile = null`) is sufficient.
+                    />
+
+                    {/* 2. Styled Label acting as the button */}
+                    <label
+                      // Link to input only if no file is selected AND not uploading
+                      htmlFor={
+                        !selectedImageFile && !isUploading
+                          ? "hidden-file-input"
+                          : undefined
+                      }
+                      style={buttonLabelStyle} // Apply the button-like styles
+                      // Trigger capture ONLY if a file IS selected AND not uploading
+                      onClick={
+                        selectedImageFile && !isUploading
+                          ? () => onCaptureAttempt(selectedDrop)
+                          : undefined
+                      }
+                      role="button" // Semantic role
+                      aria-disabled={isUploading} // Accessibility state
+                      tabIndex={isUploading ? -1 : 0} // Control focusability
+                    >
+                      {/* --- Conditional Button Text --- */}
+                      {
+                        isUploading
+                          ? "Uploading..." // Upload in progress text
+                          : selectedImageFile
+                          ? "Capture with Photo" // File selected, ready to capture text
+                          : "Select Photo" // Initial state text
+                      }
+                    </label>
+                    {/* 3. Optional: Display selected file name below the button */}
+                  </div>
+                </div>
+              </div>
             </div>
-          </InfoWindowF>
-        )}
-      </GoogleMap>
-    </>
+
+            {/* --- END UPDATE --- */}
+          </div>
+        </OverlayViewF>
+      )}
+    </GoogleMap>
   );
 }
 
-export default MapComponent;
+export default React.memo(MapComponent);

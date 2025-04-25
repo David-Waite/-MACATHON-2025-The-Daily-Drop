@@ -1,7 +1,6 @@
 // src/pages/MapPage.js
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { getAuth, signOut } from "firebase/auth";
 import {
   collection,
   query,
@@ -79,18 +78,6 @@ function MapPage() {
   const fileInputRef = useRef(null);
   const watchIdRef = useRef(null);
 
-  // --- Authentication ---
-  const handleLogout = () => {
-    const authInstance = getAuth();
-    signOut(authInstance)
-      .then(() => {
-        console.log("User signed out");
-        navigate("/login");
-      })
-      .catch((error) => {
-        console.error("Error signing out:", error);
-      });
-  };
 
   // --- User Location Effect ---
   useEffect(() => {
@@ -375,7 +362,10 @@ function MapPage() {
   const closeLeaderboard = () => setIsLeaderboardOpen(false);
 
   // --- Profile Toggle Handlers ---
-  const toggleProfile = () => setIsProfileOpen(!isProfileOpen);
+  const toggleProfile = () => {
+    console.log("Toggling profile. Current state:", isProfileOpen);
+      setIsProfileOpen(!isProfileOpen);
+  }
   const closeProfile = () => setIsProfileOpen(false);
 
   // --- Map Interaction Handlers ---
@@ -443,17 +433,12 @@ function MapPage() {
       style={{
         position: "relative",
         width: "100%",
-        height: "100%", // Use 100vh for full viewport height
+        height: "100vh  ", // Use 100vh for full viewport height
         overflow: "hidden",
       }}
     >
-      {/* Logout Button */}
-      <div style={{ position: "absolute", top: 10, right: 10, zIndex: 10 }}>
-        <button onClick={handleLogout} className="logout-button">
-          Log Out
-        </button>
-      </div>
-
+     {/* Log state during render */}
+     {console.log("MapPage render - isProfileOpen:", isProfileOpen)}
       {/* Leaderboard Button */}
       <div
         onClick={toggleLeaderboard}

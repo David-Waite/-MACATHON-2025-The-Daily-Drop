@@ -527,7 +527,6 @@ function MapPage() {
       <input
         type="file"
         accept="image/*"
-        capture
         style={{ display: "none" }}
         ref={fileInputRef}
         onChange={handleFileSelect}

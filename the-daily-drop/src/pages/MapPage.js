@@ -14,7 +14,6 @@ import {
   limit,
   orderBy,
   serverTimestamp,
-  // No need for orderBy or getCountFromServer with the current simple fetch logic
 } from "firebase/firestore";
 import {
   getStorage,
@@ -51,6 +50,7 @@ function deg2rad(deg) {
 function MapPage() {
   // --- State Variables ---
   const [userPosition, setUserPosition] = useState(null);
+  const [userAccuracy, setUserAccuracy] = useState(null); // <-- ADDED: State for accuracy
   const [drops, setDrops] = useState([]);
   const [selectedDrop, setSelectedDrop] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -58,10 +58,13 @@ function MapPage() {
   const [isLeaderboardOpen, setIsLeaderboardOpen] = useState(false); // <-- Leaderboard State
   const [leaderboardData, setLeaderboardData] = useState([]); // <-- Leaderboard Data State
   const [isLoadingLeaderboard, setIsLoadingLeaderboard] = useState(false); // <-- Leaderboard Loading State
+  const [currentCenter, setCurrentCenter] = useState(null); // <-- ADDED: State to manage map center
+  const [isFirstLocationUpdate, setIsFirstLocationUpdate] = useState(true); // <-- ADDED: Track first update
 
   // --- Hooks ---
   const navigate = useNavigate();
   const fileInputRef = useRef(null);
+  const watchIdRef = useRef(null); // <-- ADDED: Use ref for watchId
 
   // --- Constants ---
   const defaultCenter = { lat: -37.8111, lng: 144.9469 }; // Flagstaff Gardens approx
@@ -82,26 +85,60 @@ function MapPage() {
 
   // --- User Location Effect ---
   useEffect(() => {
-    let watchId;
+    // Use watchIdRef defined outside the effect
     if (navigator.geolocation) {
-      watchId = navigator.geolocation.watchPosition(
+      watchIdRef.current = navigator.geolocation.watchPosition(
+        // Store ID in ref
         (position) => {
-          const { latitude, longitude } = position.coords;
-          setUserPosition({ lat: latitude, lng: longitude });
-          // console.log("User position updated:", { latitude, longitude }); // Reduce console noise
+          // Destructure latitude, longitude, AND accuracy
+          const { latitude, longitude, accuracy } = position.coords;
+          const currentPosition = { lat: latitude, lng: longitude };
+
+          setUserPosition(currentPosition);
+          setUserAccuracy(accuracy); // <-- Set the accuracy state
+
+          // console.log("User position updated:", currentPosition); // Less console noise
+          // console.log("User accuracy updated:", accuracy);
+
+          // Center map on first successful location update
+          if (isFirstLocationUpdate) {
+            setCurrentCenter(currentPosition);
+            setIsFirstLocationUpdate(false);
+            console.log("Centered map on first location update.");
+          }
         },
         (error) => {
           console.error("Error getting user location:", error);
+          // If location fails initially, center on default
+          if (isFirstLocationUpdate) {
+            setCurrentCenter(defaultCenter);
+            setIsFirstLocationUpdate(false); // Still counts as 'first update' handled
+            console.log("Error getting location, centering on default.");
+          }
+          // Optionally clear position/accuracy if error occurs later
+          // setUserPosition(null);
+          // setUserAccuracy(null);
         },
         { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
       );
     } else {
       console.error("Geolocation is not supported by this browser.");
+      // Handle lack of geolocation support - center on default
+      setCurrentCenter(defaultCenter);
+      setIsFirstLocationUpdate(false);
+      console.log("Geolocation not supported, centering on default.");
     }
+
+    // Cleanup function using the ref
     return () => {
-      if (watchId) navigator.geolocation.clearWatch(watchId);
+      if (watchIdRef.current !== null) {
+        // Check ref's current value
+        navigator.geolocation.clearWatch(watchIdRef.current);
+        console.log("Stopped watching position.");
+      }
     };
-  }, []);
+    // Effect dependencies: re-run if needed, though the first update logic handles internal state change
+  }, [isFirstLocationUpdate]); // Depend on isFirstLocationUpdate to correctly handle the centering logic
 
   // --- Fetch Active Drops Effect ---
   useEffect(() => {
@@ -154,8 +191,8 @@ function MapPage() {
       console.log("Fetching leaderboard data from users collection...");
 
       try {
-        // 1. Reference the 'users' collection
-        const usersRef = collection(db, "user");
+        // 1. Reference the 'users' collection (MAKE SURE COLLECTION NAME IS 'user')
+        const usersRef = collection(db, "user"); // Or 'users' if that's the actual name
 
         // 2. Create the query: Order by 'point' descending, limit results
         const q = query(
@@ -186,9 +223,11 @@ function MapPage() {
 
         console.log("Formatted Leaderboard Data:", formattedData);
         setLeaderboardData(formattedData); // Set the state with the new data
-
       } catch (error) {
-        console.error("Error fetching leaderboard from users collection:", error);
+        console.error(
+          "Error fetching leaderboard from users collection:",
+          error
+        );
         setLeaderboardData([]); // Ensure data is cleared on error
       } finally {
         setIsLoadingLeaderboard(false); // Set loading state to false
@@ -196,9 +235,7 @@ function MapPage() {
     };
 
     fetchLeaderboard();
-
   }, [isLeaderboardOpen]); // Dependency: re-run when isLeaderboardOpen changes
-
 
   // --- Capture Logic ---
   const handleCaptureAttempt = async (dropData) => {
@@ -304,7 +341,7 @@ function MapPage() {
       (snapshot) => {
         const progress =
           (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-        console.log("Upload is " + progress + "% done");
+        // console.log("Upload is " + progress + "% done"); // Less noise
       },
       (error) => {
         console.error("Upload failed:", error);
@@ -331,7 +368,10 @@ function MapPage() {
           alert("Drop captured successfully!");
           setSelectedDrop(null); // Close InfoWindow
         } catch (firestoreError) {
-          console.error("Error adding submission to Firestore:", firestoreError);
+          console.error(
+            "Error adding submission to Firestore:",
+            firestoreError
+          );
           alert(`Capture failed (database error): ${firestoreError.message}`);
           // TODO: Consider deleting the uploaded photo from Storage if Firestore fails
         } finally {
@@ -353,10 +393,19 @@ function MapPage() {
   // --- Render ---
   return (
     // Added overflow: hidden to prevent body scroll when leaderboard is open
-    <div style={{ position: "relative", width: "100vw", height: "100vh", overflow: "hidden" }}>
+    <div
+      style={{
+        position: "relative",
+        width: "100vw",
+        height: "100vh",
+        overflow: "hidden",
+      }}
+    >
       {/* Logout Button */}
       <div style={{ position: "absolute", top: 10, right: 10, zIndex: 10 }}>
-        <button onClick={handleLogout} className="logout-button"> {/* Added class for potential styling */}
+        <button onClick={handleLogout} className="logout-button">
+          {" "}
+          {/* Added class for potential styling */}
           Log Out
         </button>
       </div>
@@ -397,14 +446,15 @@ function MapPage() {
       {/* Map Component */}
       <MapComponent
         userPosition={userPosition}
+        userAccuracy={userAccuracy} // <-- PASS ACCURACY PROP
         drops={drops}
         selectedDrop={selectedDrop}
         onDropClick={setSelectedDrop}
         onInfoWindowClose={() => setSelectedDrop(null)}
         onCaptureAttempt={handleCaptureAttempt}
         isUploading={isUploading}
-        center={userPosition || defaultCenter}
-        defaultCenter={defaultCenter}
+        center={currentCenter || defaultCenter} // <-- USE CONTROLLED CENTER
+        defaultCenter={defaultCenter} // Pass fallback default center
       />
 
       {/* Leaderboard Component */}

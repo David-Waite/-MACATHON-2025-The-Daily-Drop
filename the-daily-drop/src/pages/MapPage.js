@@ -443,7 +443,7 @@ function MapPage() {
       style={{
         position: "relative",
         width: "100%",
-        height: "100vh", // Use 100vh for full viewport height
+        height: "100%", // Use 100vh for full viewport height
         overflow: "hidden",
       }}
     >

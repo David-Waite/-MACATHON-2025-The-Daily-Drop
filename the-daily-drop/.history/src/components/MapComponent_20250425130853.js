@@ -376,10 +376,8 @@ function MapComponent({ userId }) {
       {/* --- Leaderboard button --- */}
       <div
         onClick={handleGoToleaderboard}
-        style={{ position: "absolute", bottom: 10, right: 10, zIndex: 999 }}
-      >
-        leader board
-      </div>
+        style={{ position: "absolute", top: 10, right: 10, zIndex: 999 }}
+      ></div>
       <input
         type="file"
         accept="image/*" // Allow any image type

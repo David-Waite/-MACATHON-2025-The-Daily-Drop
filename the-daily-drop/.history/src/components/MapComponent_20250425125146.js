@@ -360,25 +360,11 @@ function MapComponent({ userId }) {
       setIsUploading(false);
     }
   };
-
-  const handleGoToleaderboard = () => {
-    console.log("Navigating to /profile...");
-    // 3. Call navigate with the target path
-    navigate("/leaderboard");
-  };
   return (
     <>
       {/* --- Logout Button --- */}
       <div style={{ position: "absolute", top: 10, right: 10, zIndex: 999 }}>
         <button onClick={handleLogout}>Log Out</button>
-      </div>
-
-      {/* --- Leaderboard button --- */}
-      <div
-        onClick={handleGoToleaderboard}
-        style={{ position: "absolute", bottom: 10, right: 10, zIndex: 999 }}
-      >
-        leader board
       </div>
       <input
         type="file"

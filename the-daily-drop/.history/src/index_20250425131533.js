@@ -7,16 +7,15 @@ import reportWebVitals from "./reportWebVitals";
 import { BrowserRouter, Routes, Route } from "react-router"; // Or react-router-dom
 
 // Import Page Components
-import SignUpPage from "./pages/SignUpPage";
-import LoginPage from "./pages/LoginPage";
-import MapPage from "./pages/MapPage";
+import SignUpPage from "../pages/SignUpPage";
+import LoginPage from "../pages/LoginPage";
+import MapPage from "../pages/MapPage";
 // import AdminPage from "./pages/AdminPage";
 import LeaderboardPage from "./pages/LeaderboardPage"; // <--- Import your new page
 
 // Import Protector Components
-import { ProtectedRoute } from "./routes/ProtectedRoute";
-import { PublicRoute } from "./routes/PublicRoute";
-import MapComponent from "./components/MapComponent";
+import { ProtectedRoute } from "../components/ProtectedRoute";
+import { PublicRoute } from "../components/PublicRoute";
 
 const root = ReactDOM.createRoot(document.getElementById("root"));
 
@@ -34,7 +33,7 @@ root.render(
         <Route element={<ProtectedRoute />}>
           {/* This checks if user is logged in */}
           {/* Routes rendered via <Outlet /> inside ProtectedRoute if auth check passes */}
-          <Route path="/map" element={<MapComponent />} />
+          <Route path="/map" element={<MapPage />} />
           {/* <Route path="/admin" element={<AdminPage />} /> */}
           <Route path="/leaderboard" element={<LeaderboardPage />} />{" "}
           {/* <--- Add this line */}

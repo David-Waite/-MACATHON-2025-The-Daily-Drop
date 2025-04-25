@@ -10,13 +10,12 @@ import { BrowserRouter, Routes, Route } from "react-router"; // Or react-router-
 import SignUpPage from "./pages/SignUpPage";
 import LoginPage from "./pages/LoginPage";
 import MapPage from "./pages/MapPage";
-// import AdminPage from "./pages/AdminPage";
+import AdminPage from "./pages/AdminPage";
 import LeaderboardPage from "./pages/LeaderboardPage"; // <--- Import your new page
 
 // Import Protector Components
-import { ProtectedRoute } from "./routes/ProtectedRoute";
-import { PublicRoute } from "./routes/PublicRoute";
-import MapComponent from "./components/MapComponent";
+import { ProtectedRoute } from "../components/ProtectedRoute";
+import { PublicRoute } from "../components/PublicRoute";
 
 const root = ReactDOM.createRoot(document.getElementById("root"));
 
@@ -32,10 +31,11 @@ root.render(
         </Route>
         {/* Protected Routes (Map, Admin, Leaderboard) */}
         <Route element={<ProtectedRoute />}>
+          {" "}
           {/* This checks if user is logged in */}
           {/* Routes rendered via <Outlet /> inside ProtectedRoute if auth check passes */}
-          <Route path="/map" element={<MapComponent />} />
-          {/* <Route path="/admin" element={<AdminPage />} /> */}
+          <Route path="/map" element={<MapPage />} />
+          <Route path="/admin" element={<AdminPage />} />
           <Route path="/leaderboard" element={<LeaderboardPage />} />{" "}
           {/* <--- Add this line */}
           {/* Add any other protected routes here */}

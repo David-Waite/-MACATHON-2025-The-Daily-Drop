@@ -16,7 +16,6 @@ import LeaderboardPage from "./pages/LeaderboardPage"; // <--- Import your new p
 // Import Protector Components
 import { ProtectedRoute } from "./routes/ProtectedRoute";
 import { PublicRoute } from "./routes/PublicRoute";
-import MapComponent from "./components/MapComponent";
 
 const root = ReactDOM.createRoot(document.getElementById("root"));
 
@@ -34,7 +33,7 @@ root.render(
         <Route element={<ProtectedRoute />}>
           {/* This checks if user is logged in */}
           {/* Routes rendered via <Outlet /> inside ProtectedRoute if auth check passes */}
-          <Route path="/map" element={<MapComponent />} />
+          <Route path="/map" element={<MapPage />} />
           {/* <Route path="/admin" element={<AdminPage />} /> */}
           <Route path="/leaderboard" element={<LeaderboardPage />} />{" "}
           {/* <--- Add this line */}

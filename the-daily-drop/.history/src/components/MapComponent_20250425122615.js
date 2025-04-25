@@ -5,15 +5,9 @@ import {
   MarkerF,
   InfoWindowF,
 } from "@react-google-maps/api";
-import { auth } from "../firebase"; // Make sure auth is imported
-import {
-  getStorage,
-  ref,
-  uploadBytesResumable,
-  getDownloadURL,
-} from "firebase/storage";
+
 // --- Firebase Imports ---
-import { db, storage } from "../firebase";
+import { db } from "../firebase";
 import {
   collection,
   query,
@@ -21,10 +15,6 @@ import {
   onSnapshot,
   Timestamp,
   GeoPoint,
-  addDoc,
-  getDocs,
-  limit,
-  serverTimestamp,
 } from "firebase/firestore";
 import { getAuth, signOut } from "firebase/auth"; // Import Firebase Auth
 import { useNavigate } from "react-router-dom"; // For redirect after logout
@@ -69,8 +59,7 @@ function MapComponent({ userId }) {
   const [map, setMap] = useState(null);
 
   const defaultCenter = { lat: -37.8111, lng: 144.9469 };
-  const DISTANCE_THRESHOLD_METERS = 30000;
-  //IMPORT CHANGE BACK THRESHOLD METERS
+  const DISTANCE_THRESHOLD_METERS = 30;
 
   const navigate = useNavigate(); // For redirect after logout
   const fileInputRef = useRef(null); // Create a ref for the file input
@@ -150,34 +139,22 @@ function MapComponent({ userId }) {
   }, []);
 
   // --- Capture Attempt ---
-  // ... inside MapPage component ...
-
-  const handleCaptureAttempt = async (dropData) => {
-    // <--- Make async
-    const user = auth.currentUser; // Get current user info
-
-    if (!user) {
-      alert("Please log in to capture drops.");
-      return;
-    }
-    const currentUserId = user.uid;
-
+  const handleCaptureAttempt = (dropData) => {
+    // Pass the whole drop object now
     if (!userPosition) {
+      // No need to check === defaultCenter here
       alert(
         "Could not get your current location. Please enable location services and wait for GPS fix."
       );
       return;
     }
 
-    if (!dropData || !dropData.position || !dropData.id) {
-      // Also check for dropData.id
-      console.error(
-        "Drop data, position, or ID missing in handleCaptureAttempt"
-      );
+    // Ensure dropData and its position exist
+    if (!dropData || !dropData.position) {
+      console.error("Drop data or position missing in handleCaptureAttempt");
       alert("Error: Could not identify the selected drop.");
       return;
     }
-    const selectedDropId = dropData.id; // Get the drop ID
 
     const distance = getDistanceFromLatLonInKm(
       userPosition.lat,
@@ -189,45 +166,14 @@ function MapComponent({ userId }) {
     console.log(`Distance to drop: ${distance.toFixed(2)} meters`);
 
     if (distance <= DISTANCE_THRESHOLD_METERS) {
-      // --- Check if already submitted ---
-      try {
-        const submissionsRef = collection(db, "submissions");
-        const q = query(
-          submissionsRef,
-          where("userId", "==", currentUserId),
-          where("dropId", "==", selectedDropId),
-          limit(1) // We only need to know if at least one exists
-        );
-
-        console.log(
-          `Checking for existing submission: userId=${currentUserId}, dropId=${selectedDropId}`
-        );
-        const querySnapshot = await getDocs(q);
-
-        if (!querySnapshot.empty) {
-          // Found an existing submission
-          console.log("User has already submitted for this drop.");
-          alert("You have already captured this drop!");
-          return; // Stop processing
-        } else {
-          // No existing submission found, proceed with capture
-          console.log("No existing submission found. Proceeding to capture.");
-          setDropToSubmit(dropData); // Store drop info
-          fileInputRef.current.click(); // Trigger hidden file input
-        }
-      } catch (error) {
-        console.error("Error checking for existing submission:", error);
-        alert("Could not verify submission status. Please try again.");
-        return; // Stop on error
-      }
-      // --- End check ---
+      // Store the drop data needed for submission
+      setDropToSubmit(dropData);
+      // Trigger the hidden file input
+      fileInputRef.current.click();
     } else {
       alert(`Too far! Get within ${DISTANCE_THRESHOLD_METERS} meters.`);
     }
   };
-
-  // --- Remember to keep the onClick on the button ---
-  // <button onClick={() => handleCaptureAttempt(selectedDrop)} disabled={isUploading}> ... </button>
 
   const onLoad = useCallback(
     function callback(mapInstance) {
@@ -360,25 +306,11 @@ function MapComponent({ userId }) {
       setIsUploading(false);
     }
   };
-
-  const handleGoToleaderboard = () => {
-    console.log("Navigating to /profile...");
-    // 3. Call navigate with the target path
-    navigate("/leaderboard");
-  };
   return (
     <>
       {/* --- Logout Button --- */}
       <div style={{ position: "absolute", top: 10, right: 10, zIndex: 999 }}>
         <button onClick={handleLogout}>Log Out</button>
-      </div>
-
-      {/* --- Leaderboard button --- */}
-      <div
-        onClick={handleGoToleaderboard}
-        style={{ position: "absolute", bottom: 10, right: 10, zIndex: 999 }}
-      >
-        leader board
       </div>
       <input
         type="file"

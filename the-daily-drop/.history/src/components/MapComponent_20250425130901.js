@@ -376,7 +376,7 @@ function MapComponent({ userId }) {
       {/* --- Leaderboard button --- */}
       <div
         onClick={handleGoToleaderboard}
-        style={{ position: "absolute", bottom: 10, right: 10, zIndex: 999 }}
+        style={{ position: "absolute", top: 10, right: 10, zIndex: 999 }}
       >
         leader board
       </div>

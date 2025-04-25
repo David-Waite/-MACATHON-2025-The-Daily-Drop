@@ -23,7 +23,6 @@ import {
   GeoPoint,
   addDoc,
   getDocs,
-  limit,
   serverTimestamp,
 } from "firebase/firestore";
 import { getAuth, signOut } from "firebase/auth"; // Import Firebase Auth
@@ -69,8 +68,7 @@ function MapComponent({ userId }) {
   const [map, setMap] = useState(null);
 
   const defaultCenter = { lat: -37.8111, lng: 144.9469 };
-  const DISTANCE_THRESHOLD_METERS = 30000;
-  //IMPORT CHANGE BACK THRESHOLD METERS
+  const DISTANCE_THRESHOLD_METERS = 30;
 
   const navigate = useNavigate(); // For redirect after logout
   const fileInputRef = useRef(null); // Create a ref for the file input
@@ -360,25 +358,11 @@ function MapComponent({ userId }) {
       setIsUploading(false);
     }
   };
-
-  const handleGoToleaderboard = () => {
-    console.log("Navigating to /profile...");
-    // 3. Call navigate with the target path
-    navigate("/leaderboard");
-  };
   return (
     <>
       {/* --- Logout Button --- */}
       <div style={{ position: "absolute", top: 10, right: 10, zIndex: 999 }}>
         <button onClick={handleLogout}>Log Out</button>
-      </div>
-
-      {/* --- Leaderboard button --- */}
-      <div
-        onClick={handleGoToleaderboard}
-        style={{ position: "absolute", bottom: 10, right: 10, zIndex: 999 }}
-      >
-        leader board
       </div>
       <input
         type="file"

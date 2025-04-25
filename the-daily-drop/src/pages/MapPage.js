@@ -155,38 +155,95 @@ function MapPage() {
   // --- Fetch Leaderboard Data Effect ---
   useEffect(() => {
     if (!isLeaderboardOpen) {
-      return;
+      return; // Don't fetch if closed
     }
+
     const fetchLeaderboard = async () => {
       setIsLoadingLeaderboard(true);
-      setLeaderboardData([]);
-      console.log("Fetching leaderboard data from users collection...");
+      setLeaderboardData([]); // Clear previous data
+      console.log(
+        "Fetching leaderboard data for all users based on approved submissions..."
+      );
+
       try {
-        const usersRef = collection(db, "user");
-        const q = query(usersRef, orderBy("point", "desc"), limit(20));
-        const querySnapshot = await getDocs(q);
-        const formattedData = [];
-        querySnapshot.forEach((doc) => {
-          const data = doc.data();
-          const userId = doc.id;
-          const username = data.username || `User...${userId.slice(-4)}`;
-          const score = data.point || 0;
-          formattedData.push({ id: userId, username: username, score: score });
+        // --- Step 1: Fetch ALL users ---
+        console.log("Fetching all users...");
+        const usersRef = collection(db, "user"); // Ensure collection name is 'user'
+        const usersSnapshot = await getDocs(usersRef);
+        const allUsers = {}; // { userId: { username: 'name' } }
+        usersSnapshot.forEach((doc) => {
+          allUsers[doc.id] = {
+            username: doc.data().username || `User...${doc.id.slice(-4)}`,
+            // Initialize score, will be updated later
+            score: 0,
+          };
         });
-        console.log("Formatted Leaderboard Data:", formattedData);
-        setLeaderboardData(formattedData);
-      } catch (error) {
-        console.error(
-          "Error fetching leaderboard from users collection:",
-          error
+        console.log(`Fetched ${Object.keys(allUsers).length} users.`);
+
+        // --- Step 2: Fetch ALL approved submissions ---
+        console.log("Fetching approved submissions...");
+        const submissionsRef = collection(db, "submissions");
+        const approvedQuery = query(
+          submissionsRef,
+          where("status", "==", "approved")
         );
-        setLeaderboardData([]);
+        const approvedSubmissionsSnapshot = await getDocs(approvedQuery);
+        console.log(
+          `Found ${approvedSubmissionsSnapshot.size} approved submissions.`
+        );
+
+        // --- Step 3: Count approved submissions per user ---
+        const userCounts = {}; // { userId: count }
+        approvedSubmissionsSnapshot.forEach((doc) => {
+          const data = doc.data();
+          if (data.userId) {
+            userCounts[data.userId] = (userCounts[data.userId] || 0) + 1;
+          }
+        });
+        console.log("Counts for users with approved submissions:", userCounts);
+
+        // --- Step 4: Combine data - Update scores for users with submissions ---
+        Object.keys(userCounts).forEach((userId) => {
+          if (allUsers[userId]) {
+            // Update score if user exists in our allUsers map
+            allUsers[userId].score = userCounts[userId];
+          } else {
+            // This case shouldn't happen often if submissions have valid userIds
+            // but handles potential orphaned submissions
+            console.warn(
+              `User ID ${userId} found in submissions but not in 'user' collection.`
+            );
+            // Optionally add them with a placeholder name if desired
+            // allUsers[userId] = { username: `User...${userId.slice(-4)}`, score: userCounts[userId] };
+          }
+        });
+
+        // --- Step 5: Convert the allUsers map to an array ---
+        const formattedData = Object.entries(allUsers).map(
+          ([userId, userData]) => ({
+            id: userId,
+            username: userData.username,
+            score: userData.score, // Score is now correctly 0 or the count
+          })
+        );
+
+        // --- Step 6: Sort the final array by score descending ---
+        formattedData.sort((a, b) => b.score - a.score);
+
+        console.log("Final Formatted Leaderboard Data:", formattedData);
+        setLeaderboardData(formattedData); // Set the final state
+
+      } catch (error) {
+        console.error("Error fetching leaderboard data:", error);
+        setLeaderboardData([]); // Clear data on error
       } finally {
-        setIsLoadingLeaderboard(false);
+        setIsLoadingLeaderboard(false); // Set loading state to false
       }
     };
+
     fetchLeaderboard();
-  }, [isLeaderboardOpen]);
+
+  }, [isLeaderboardOpen]); // Dependency: re-run when isLeaderboardOpen changes
 
   // --- Fetch Current User Data Effect ---
   useEffect(() => {
@@ -467,7 +524,7 @@ function MapPage() {
       style={{
         position: "relative",
         width: "100%",
-        height: "100vh  ", // Use 100vh for full viewport height
+        height: "100%", // Use 100vh for full viewport height
         overflow: "hidden",
       }}
     >

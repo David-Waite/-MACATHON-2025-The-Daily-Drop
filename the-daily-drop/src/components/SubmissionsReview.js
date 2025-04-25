@@ -8,30 +8,30 @@ function SubmissionsReview() {
   const [submissions, setSubmissions] = useState([]);
 
   useEffect(() => {
-    const fetchSubmissions = async () => {
-      const snapshot = await getDocs(collection(db, "submissions"));
-      const data = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
-  
-      // Print status of each submission
-      console.log("Fetched Submissions:");
-      data.forEach((sub) => {
-        console.log(`ID: ${sub.id}, Status: ${sub.status}`);
-      });
-  
-      // Filter for status === "pending" (case-insensitive)
-      const pendingSubmissions = data.filter(
-        (sub) => sub.status?.toLowerCase() === "pending"
-      );
-  
-      setSubmissions(pendingSubmissions);
-    };
-  
-    fetchSubmissions();
-  }, []);
-  
+  const fetchSubmissions = async () => {
+    const snapshot = await getDocs(collection(db, "submissions"));
+    const data = snapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+
+    // Print status of each submission
+    console.log("Fetched Submissions:");
+    data.forEach((sub) => {
+      console.log(`ID: ${sub.id}, Status: ${sub.status}`);
+    });
+
+    // Filter for status === "pending" (case-insensitive)
+    const pendingSubmissions = data.filter(
+      (sub) => sub.status?.toLowerCase() === "pending"
+    );
+
+    setSubmissions(pendingSubmissions);
+  };
+
+  fetchSubmissions();
+}, []);
+
   const handleApprove = async (submission) => {
     try {
       await updateDoc(doc(db, "submissions", submission.id), { status: "approved" });

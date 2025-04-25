@@ -14,6 +14,8 @@ import {
   limit,
   orderBy,
   serverTimestamp,
+  doc,
+  getDoc,
 } from "firebase/firestore";
 import {
   getStorage,
@@ -21,14 +23,17 @@ import {
   uploadBytesResumable,
   getDownloadURL,
 } from "firebase/storage";
-import { db, storage, auth } from "../firebase";
-import { FaTrophy, FaLocationArrow } from "react-icons/fa";
+import { db, storage, auth } from "../firebase"; // Ensure auth is imported correctly
+import { FaTrophy, FaLocationArrow, FaUser } from "react-icons/fa"; // Keep your icon import
+
+// Import Components
 import MapComponent from "../components/MapComponent";
 import LeaderboardComponent from "../components/LeaderboardComponent";
+import UserProfileComponent from "../components/UserProfileComponent";
 
-// --- Helpers ---
+// --- Geolocation Helper ---
 function getDistanceFromLatLonInKm(lat1, lon1, lat2, lon2) {
-  const R = 6371;
+  const R = 6371; // Radius of the earth in km
   const dLat = deg2rad(lat2 - lat1);
   const dLon = deg2rad(lon2 - lon1);
   const a =
@@ -38,19 +43,21 @@ function getDistanceFromLatLonInKm(lat1, lon1, lat2, lon2) {
       Math.sin(dLon / 2) *
       Math.sin(dLon / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  const d = R * c;
-  return d * 1000;
+  const d = R * c; // Distance in km
+  return d * 1000; // Distance in meters
 }
 function deg2rad(deg) {
   return deg * (Math.PI / 180);
 }
 
-// --- Constants for Zoom ---
-const DEFAULT_ZOOM = 16; // Your standard map zoom level
+// --- Constants ---
+const DEFAULT_ZOOM = 16; // Standard map zoom level
 const CLICKED_ZOOM = 20; // Zoom level when a drop is clicked
+const defaultCenter = { lat: -37.8111, lng: 144.9469 }; // Flagstaff Gardens approx
+const DISTANCE_THRESHOLD_METERS = 30; // Capture radius
 
 function MapPage() {
-  // --- State ---
+  // --- State Variables ---
   const [userPosition, setUserPosition] = useState(null);
   const [userAccuracy, setUserAccuracy] = useState(null);
   const [drops, setDrops] = useState([]);
@@ -60,16 +67,19 @@ function MapPage() {
   const [isLeaderboardOpen, setIsLeaderboardOpen] = useState(false);
   const [leaderboardData, setLeaderboardData] = useState([]);
   const [isLoadingLeaderboard, setIsLoadingLeaderboard] = useState(false);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [currentUserData, setCurrentUserData] = useState(null);
+  const [isLoadingCurrentUser, setIsLoadingCurrentUser] = useState(false);
   const [currentCenter, setCurrentCenter] = useState(null);
   const [mapZoom, setMapZoom] = useState(DEFAULT_ZOOM); // <-- ADDED zoom state
   const [isFirstLocationUpdate, setIsFirstLocationUpdate] = useState(true);
+
+  // --- Hooks ---
   const navigate = useNavigate();
   const fileInputRef = useRef(null);
   const watchIdRef = useRef(null);
-  const defaultCenter = { lat: -37.8111, lng: 144.9469 }; // Example: Near Docklands
-  const DISTANCE_THRESHOLD_METERS = 30;
 
-  // --- Auth ---
+  // --- Authentication ---
   const handleLogout = () => {
     const authInstance = getAuth();
     signOut(authInstance)
@@ -82,9 +92,8 @@ function MapPage() {
       });
   };
 
-  // --- Effects ---
+  // --- User Location Effect ---
   useEffect(() => {
-    // Location watch effect
     if (navigator.geolocation) {
       watchIdRef.current = navigator.geolocation.watchPosition(
         (position) => {
@@ -95,7 +104,6 @@ function MapPage() {
           if (isFirstLocationUpdate) {
             setCurrentCenter(currentPosition);
             // Keep default zoom on first load
-            // setMapZoom(DEFAULT_ZOOM); // Redundant as it's the initial state
             setIsFirstLocationUpdate(false);
             console.log("Centered map on first location update.");
           }
@@ -104,7 +112,6 @@ function MapPage() {
           console.error("Error getting user location:", error);
           if (isFirstLocationUpdate) {
             setCurrentCenter(defaultCenter);
-            // setMapZoom(DEFAULT_ZOOM); // Redundant
             setIsFirstLocationUpdate(false);
             console.log("Error getting location, centering on default.");
           }
@@ -112,9 +119,8 @@ function MapPage() {
         { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
       );
     } else {
-      console.error("Geolocation is not supported.");
+      console.error("Geolocation is not supported by this browser.");
       setCurrentCenter(defaultCenter);
-      // setMapZoom(DEFAULT_ZOOM); // Redundant
       setIsFirstLocationUpdate(false);
       console.log("Geolocation not supported, centering on default.");
     }
@@ -124,10 +130,10 @@ function MapPage() {
         console.log("Stopped watching position.");
       }
     };
-  }, [isFirstLocationUpdate]); // Only run on mount/unmount based on this flag
+  }, [isFirstLocationUpdate]);
 
+  // --- Fetch Active Drops Effect ---
   useEffect(() => {
-    // Drops fetch effect
     const dropsRef = collection(db, "drops");
     const now = Timestamp.now();
     const q = query(dropsRef, where("endTime", ">=", now));
@@ -162,33 +168,35 @@ function MapPage() {
     return () => unsubscribe();
   }, []);
 
+  // --- Fetch Leaderboard Data Effect ---
   useEffect(() => {
-    // Leaderboard fetch effect
     if (!isLeaderboardOpen) {
       return;
     }
     const fetchLeaderboard = async () => {
       setIsLoadingLeaderboard(true);
       setLeaderboardData([]);
-      console.log("Fetching leaderboard data...");
+      console.log("Fetching leaderboard data from users collection...");
       try {
-        const usersRef = collection(db, "user"); // Assuming 'user' is your collection name
-        const q = query(usersRef, orderBy("point", "desc"), limit(20)); // Adjust field name if needed
+        const usersRef = collection(db, "user");
+        const q = query(usersRef, orderBy("point", "desc"), limit(20));
         const querySnapshot = await getDocs(q);
         const formattedData = [];
         querySnapshot.forEach((doc) => {
           const data = doc.data();
           const userId = doc.id;
-          // Use 'username' field, fallback to a generic name if missing
           const username = data.username || `User...${userId.slice(-4)}`;
-          const score = data.point || 0; // Use 'point' field, fallback to 0
+          const score = data.point || 0;
           formattedData.push({ id: userId, username: username, score: score });
         });
         console.log("Formatted Leaderboard Data:", formattedData);
         setLeaderboardData(formattedData);
       } catch (error) {
-        console.error("Error fetching leaderboard:", error);
-        setLeaderboardData([]); // Clear data on error
+        console.error(
+          "Error fetching leaderboard from users collection:",
+          error
+        );
+        setLeaderboardData([]);
       } finally {
         setIsLoadingLeaderboard(false);
       }
@@ -196,7 +204,41 @@ function MapPage() {
     fetchLeaderboard();
   }, [isLeaderboardOpen]);
 
-  // --- Capture/Upload Logic ---
+  // --- Fetch Current User Data Effect ---
+  useEffect(() => {
+    if (!isProfileOpen) {
+      return;
+    }
+    const fetchCurrentUser = async () => {
+      const user = auth.currentUser;
+      if (!user) {
+        console.log("No user logged in to fetch profile data.");
+        setCurrentUserData(null);
+        return;
+      }
+      setIsLoadingCurrentUser(true);
+      console.log("Fetching current user data for:", user.uid);
+      try {
+        const userDocRef = doc(db, "user", user.uid);
+        const docSnap = await getDoc(userDocRef);
+        if (docSnap.exists()) {
+          console.log("Current user data:", docSnap.data());
+          setCurrentUserData({ id: docSnap.id, ...docSnap.data() });
+        } else {
+          console.log("No such user document!");
+          setCurrentUserData(null);
+        }
+      } catch (error) {
+        console.error("Error fetching current user data:", error);
+        setCurrentUserData(null);
+      } finally {
+        setIsLoadingCurrentUser(false);
+      }
+    };
+    fetchCurrentUser();
+  }, [isProfileOpen]);
+
+  // --- Capture Logic ---
   const handleCaptureAttempt = async (dropData) => {
     const user = auth.currentUser;
     if (!user) {
@@ -205,12 +247,14 @@ function MapPage() {
     }
     const currentUserId = user.uid;
     if (!userPosition) {
-      alert("Could not get your current location.");
+      alert(
+        "Could not get your current location. Please enable location services and try again."
+      );
       return;
     }
     if (!dropData?.position?.lat || !dropData?.id) {
-      console.error("Invalid drop data:", dropData);
-      alert("Error: Invalid drop data.");
+      console.error("Drop data invalid in handleCaptureAttempt:", dropData);
+      alert("Error: Could not identify the selected drop.");
       return;
     }
     const distance = getDistanceFromLatLonInKm(
@@ -219,11 +263,10 @@ function MapPage() {
       dropData.position.lat,
       dropData.position.lng
     );
-    console.log(`Distance: ${distance.toFixed(2)}m`);
+    console.log(`Distance to drop ${dropData.id}: ${distance.toFixed(2)}m`);
 
     if (distance <= DISTANCE_THRESHOLD_METERS) {
       try {
-        // Check if already submitted
         const submissionsRef = collection(db, "submissions");
         const q = query(
           submissionsRef,
@@ -232,107 +275,96 @@ function MapPage() {
           limit(1)
         );
         const querySnapshot = await getDocs(q);
-
         if (!querySnapshot.empty) {
           alert("You have already captured this drop!");
         } else {
-          console.log("Triggering photo input.");
-          setDropToSubmit(dropData); // Store drop context for file handler
-          fileInputRef.current?.click(); // Open file input
+          console.log("Close enough & not submitted. Triggering photo input.");
+          setDropToSubmit(dropData);
+          fileInputRef.current?.click();
         }
       } catch (error) {
-        console.error("Error checking submission:", error);
-        alert("Could not verify submission status.");
+        console.error("Error checking for existing submission:", error);
+        alert("Could not verify submission status. Please try again.");
       }
     } else {
       alert(
-        `Too far! ${distance.toFixed(
+        `Too far! You are ${distance.toFixed(
           0
         )}m away. Get within ${DISTANCE_THRESHOLD_METERS}m.`
       );
     }
   };
 
+  // --- File Handling ---
   const handleFileSelect = (event) => {
     const file = event.target.files?.[0];
     const user = auth.currentUser;
-
-    // Ensure we have file, drop context, and user
     if (!file || !dropToSubmit || !user) {
-      console.error("File, drop, or user missing.");
-      if (!dropToSubmit) alert("Drop context lost."); // Inform user if drop context is gone
-      setDropToSubmit(null); // Clear drop context
-      if (fileInputRef.current) fileInputRef.current.value = ""; // Reset file input
+      console.error("File, drop info, or user missing for upload.");
+      if (!dropToSubmit)
+        alert("Drop context lost. Please try capturing again.");
+      setDropToSubmit(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
       return;
     }
-
-    // Basic file type validation
     if (!file.type.startsWith("image/")) {
       alert("Please select an image file.");
       setDropToSubmit(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
       return;
     }
-
-    // Proceed with upload
     uploadPhotoAndUpdateFirestore(file, user.uid, dropToSubmit.id);
-
-    // Reset file input after selection is handled
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
   };
 
+  // --- Upload Logic ---
   const uploadPhotoAndUpdateFirestore = async (file, userId, dropId) => {
     setIsUploading(true);
-    setDropToSubmit(null); // Clear context once upload starts
-
+    setDropToSubmit(null);
     const timestamp = Date.now();
     const fileExtension = file.name.split(".").pop();
     const uniqueFileName = `${userId}-${dropId}-${timestamp}.${fileExtension}`;
-    const filePath = `submissions/${dropId}/${uniqueFileName}`; // Organize by dropId
+    const filePath = `submissions/${dropId}/${uniqueFileName}`;
     const storageRef = ref(storage, filePath);
     const uploadTask = uploadBytesResumable(storageRef, file);
 
     uploadTask.on(
       "state_changed",
       (snapshot) => {
-        // Optional: Track progress
-        // const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-        // console.log('Upload is ' + progress + '% done');
+        // Optional progress tracking
       },
       (error) => {
-        // Handle unsuccessful uploads
         console.error("Upload failed:", error);
         alert(`Upload failed: ${error.message}`);
         setIsUploading(false);
       },
       async () => {
-        // Handle successful uploads on complete
         try {
           const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
           console.log("File available at", downloadURL);
-
-          // Add submission record to Firestore
           const submissionsRef = collection(db, "submissions");
           const submissionData = {
             userId: userId,
             dropId: dropId,
             photoUrl: downloadURL,
-            timestamp: serverTimestamp(), // Use server timestamp
-            // Add user location if needed:
-            // captureLocation: new GeoPoint(userPosition.lat, userPosition.lng)
+            timestamp: serverTimestamp(),
+            // Optional: captureLocation: new GeoPoint(userPosition.lat, userPosition.lng)
           };
           await addDoc(submissionsRef, submissionData);
-          console.log("Submission record added");
+          console.log("Submission record added for drop:", dropId);
           alert("Drop captured successfully!");
-          setSelectedDrop(null); // Close the overlay after successful capture
-          setMapZoom(DEFAULT_ZOOM); // Optionally zoom out after capture
+          setSelectedDrop(null); // Close InfoWindow
+          setMapZoom(DEFAULT_ZOOM); // <-- RESET ZOOM ON SUCCESSFUL CAPTURE
         } catch (firestoreError) {
-          console.error("Error adding submission:", firestoreError);
-          alert(`Capture failed (db error): ${firestoreError.message}`);
+          console.error(
+            "Error adding submission to Firestore:",
+            firestoreError
+          );
+          alert(`Capture failed (database error): ${firestoreError.message}`);
         } finally {
-          setIsUploading(false); // Ensure loading state is reset
+          setIsUploading(false);
         }
       }
     );
@@ -342,51 +374,68 @@ function MapPage() {
   const toggleLeaderboard = () => setIsLeaderboardOpen(!isLeaderboardOpen);
   const closeLeaderboard = () => setIsLeaderboardOpen(false);
 
+  // --- Profile Toggle Handlers ---
+  const toggleProfile = () => setIsProfileOpen(!isProfileOpen);
+  const closeProfile = () => setIsProfileOpen(false);
+
   // --- Map Interaction Handlers ---
-  const handleDropMarkerClick = useCallback((drop) => {
-    console.log("Drop marker clicked:", drop.id);
-    setSelectedDrop(drop);
-    if (
-      drop.position &&
-      typeof drop.position.lat === "number" &&
-      typeof drop.position.lng === "number"
-    ) {
-      const newCenter = {
-        lat: drop.position.lat + 0.0002,
-        lng: drop.position.lng,
-      };
-      setCurrentCenter(newCenter);
-      setMapZoom(CLICKED_ZOOM); // <-- SET ZOOM ON CLICK
-      console.log("Map centered and zoomed on drop:", newCenter, CLICKED_ZOOM);
-    } else {
-      console.warn("Clicked drop is missing valid position data:", drop);
-    }
-  }, []); // No dependencies needed if CLICKED_ZOOM is constant
+  const handleDropMarkerClick = useCallback(
+    (drop) => {
+      console.log("Drop marker clicked:", drop.id);
+      setSelectedDrop(drop);
+      if (
+        drop.position &&
+        typeof drop.position.lat === "number" &&
+        typeof drop.position.lng === "number"
+      ) {
+        // Center slightly above the marker to account for InfoWindow
+        const newCenter = {
+          lat: drop.position.lat + 0.0002, // Small offset north
+          lng: drop.position.lng,
+        };
+        setCurrentCenter(newCenter);
+        setMapZoom(CLICKED_ZOOM); // <-- SET ZOOM ON CLICK
+        console.log(
+          "Map centered and zoomed on drop:",
+          newCenter,
+          CLICKED_ZOOM
+        );
+      } else {
+        console.warn("Clicked drop is missing valid position data:", drop);
+      }
+    },
+    [] // CLICKED_ZOOM is a constant, no dependency needed
+  );
 
   const handleOverlayClose = useCallback(() => {
     console.log(
       "handleOverlayClose called. Current selectedDrop:",
-      selectedDrop?.id // Log ID for clarity
+      selectedDrop?.id
     );
     if (selectedDrop) {
       setSelectedDrop(null);
       setMapZoom(DEFAULT_ZOOM); // <-- RESET ZOOM ON CLOSE
       console.log("Overlay closed, zoom reset to default.");
-      // Optionally recenter map here if desired, e.g., back to user location
-      // if (userPosition) setCurrentCenter({...userPosition});
+      // Optionally recenter map here if desired
     }
   }, [selectedDrop]); // Dependency: selectedDrop
 
   const handleRecenterMap = useCallback(() => {
-    console.log("handleRecenterMap called. User pos:", userPosition);
+    console.log(
+      "handleRecenterMap called. Current userPosition:",
+      userPosition
+    );
     if (userPosition) {
+      console.log("Attempting to set center to:", userPosition);
       setCurrentCenter({ ...userPosition });
-      setMapZoom(DEFAULT_ZOOM); // Also reset zoom when recentering
+      setMapZoom(DEFAULT_ZOOM); // <-- RESET ZOOM ON RECENTER
     } else {
-      console.warn("User position not available.");
-      alert("Location not available yet.");
+      console.warn("User position not available to recenter.");
+      alert(
+        "Your current location is not available yet. Please wait or check permissions."
+      );
     }
-  }, [userPosition]);
+  }, [userPosition]); // Dependency: userPosition
 
   // --- Render ---
   return (
@@ -394,16 +443,18 @@ function MapPage() {
       style={{
         position: "relative",
         width: "100%",
-        height: "100vh",
+        height: "100vh", // Use 100vh for full viewport height
         overflow: "hidden",
       }}
     >
-      {/* UI Buttons */}
+      {/* Logout Button */}
       <div style={{ position: "absolute", top: 10, right: 10, zIndex: 10 }}>
         <button onClick={handleLogout} className="logout-button">
           Log Out
         </button>
       </div>
+
+      {/* Leaderboard Button */}
       <div
         onClick={toggleLeaderboard}
         style={{
@@ -411,7 +462,7 @@ function MapPage() {
           bottom: `calc(14px + env(safe-area-inset-bottom, 0px))`,
           right: 14,
           zIndex: 10,
-          backgroundColor: "#6F42C1", // Purple color
+          backgroundColor: "#6F42C1",
           padding: "16px",
           borderRadius: "50%",
           display: "flex",
@@ -425,11 +476,13 @@ function MapPage() {
       >
         <FaTrophy color="white" size={24} />
       </div>
+
+      {/* Recenter Button */}
       <div
         onClick={handleRecenterMap}
         style={{
           position: "absolute",
-          bottom: `calc(78px + env(safe-area-inset-bottom, 0px))`, // Position above leaderboard button
+          bottom: `calc(78px + env(safe-area-inset-bottom, 0px))`, // Position above leaderboard
           right: 14,
           zIndex: 10,
           backgroundColor: "white",
@@ -447,11 +500,34 @@ function MapPage() {
         <FaLocationArrow color="#1976D2" size={24} />
       </div>
 
+      {/* User Profile Button */}
+      <div
+        onClick={toggleProfile}
+        style={{
+          position: "absolute",
+          bottom: `calc(14px + env(safe-area-inset-bottom, 0px))`, // Same level as leaderboard
+          left: 14, // Position on the left
+          zIndex: 10,
+          backgroundColor: "#6F42C1",
+          padding: "16px",
+          borderRadius: "50%",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          cursor: "pointer",
+          boxShadow: "0 2px 6px rgba(0,0,0,0.3)",
+        }}
+        role="button"
+        aria-label="Open Profile"
+      >
+        <FaUser color="white" size={24} />
+      </div>
+
       {/* Hidden File Input */}
       <input
         type="file"
         accept="image/*"
-        capture // Suggests using the camera on mobile
+        capture
         style={{ display: "none" }}
         ref={fileInputRef}
         onChange={handleFileSelect}
@@ -463,14 +539,14 @@ function MapPage() {
         userAccuracy={userAccuracy}
         drops={drops}
         selectedDrop={selectedDrop}
-        onDropClick={handleDropMarkerClick}
-        onInfoWindowClose={handleOverlayClose} // Used by overlay close button
+        onDropClick={handleDropMarkerClick} // <-- Use handler for zoom/center
+        onInfoWindowClose={handleOverlayClose} // <-- Use handler to reset zoom
         onCaptureAttempt={handleCaptureAttempt}
         isUploading={isUploading}
-        center={currentCenter || defaultCenter} // Use controlled center or fallback
-        zoom={mapZoom} // <-- PASS ZOOM STATE
+        center={currentCenter || defaultCenter} // Use controlled center
+        zoom={mapZoom} // <-- Pass zoom state
         defaultCenter={defaultCenter}
-        onMapClick={handleOverlayClose} // Clicking map outside overlay also closes it
+        onMapClick={handleOverlayClose} // <-- Close overlay/reset zoom on map click
       />
 
       {/* Leaderboard Component */}
@@ -479,6 +555,14 @@ function MapPage() {
         isOpen={isLeaderboardOpen}
         leaderboardData={leaderboardData}
         isLoading={isLoadingLeaderboard}
+      />
+
+      {/* User Profile Component */}
+      <UserProfileComponent
+        onClose={closeProfile}
+        isOpen={isProfileOpen}
+        userData={currentUserData}
+        isLoading={isLoadingCurrentUser}
       />
     </div>
   );

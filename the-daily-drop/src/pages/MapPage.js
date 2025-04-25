@@ -396,8 +396,8 @@ function MapPage() {
     <div
       style={{
         position: "relative",
-        width: "100vw",
-        height: "100vh",
+        width: "100%",
+        height: "100%",
         overflow: "hidden",
       }}
     >
@@ -415,7 +415,7 @@ function MapPage() {
         onClick={toggleLeaderboard} // <-- Use toggleLeaderboard here
         style={{
           position: "absolute",
-          bottom: 14, // Adjust as needed
+          bottom: `calc(14px + env(safe-area-inset-bottom, 0px))`,
           right: 14, // Adjust as needed
           zIndex: 10, // Ensure it's above map but below leaderboard panel overlay
           backgroundColor: "#6F42C1", // Purple color from image

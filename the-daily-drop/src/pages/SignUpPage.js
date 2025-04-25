@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import { auth } from "../firebase"; // Import the auth instance from your firebase.js file
 import { NavLink } from "react-router";
+import { useNavigate } from "react-router-dom";
 
 // Define the props interface if using TypeScript (optional but good practice)
 // interface SignUpPageProps {
@@ -20,6 +21,7 @@ function SignUpPage({ switchToLogin, onSignUpSuccess }) {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState(""); // State to hold potential signup errors
   const [loading, setLoading] = useState(false); // State to indicate loading status
+  const navigate = useNavigate();
 
   // Handler for form submission
   const handleSubmit = async (event) => {
@@ -52,7 +54,7 @@ function SignUpPage({ switchToLogin, onSignUpSuccess }) {
         password
       );
       console.log("User signed up successfully:", userCredential.user.uid);
-
+      navigate("/map");
       // Sign up successful!
       setLoading(false);
       // Clear form - though usually you navigate away immediately

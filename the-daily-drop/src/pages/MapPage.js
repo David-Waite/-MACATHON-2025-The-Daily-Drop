@@ -527,7 +527,17 @@ function MapPage() {
       <input
         type="file"
         accept="image/*"
-        style={{ display: "none" }}
+        style={{
+          position: "absolute !important",
+          height: "1px",
+          width: "1px",
+          overflow: "hidden",
+          clip: "rect(1px, 1px, 1px, 1px)",
+          whiteSpace: "nowrap" /* prevent line breaks */,
+          border: 0,
+          padding: 0,
+          margin: " -1px",
+        }}
         ref={fileInputRef}
         onChange={handleFileSelect}
       />

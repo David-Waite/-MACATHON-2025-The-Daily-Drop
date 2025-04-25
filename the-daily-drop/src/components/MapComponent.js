@@ -5,51 +5,62 @@ import {
   useJsApiLoader,
   MarkerF,
   InfoWindowF,
+  CircleF, // <-- Make sure CircleF is imported
 } from "@react-google-maps/api";
 
 // --- Map Styling & Configuration ---
 const containerStyle = {
   width: "100%",
-  height: "100%", // Make it fill the container from MapPage
+  height: "100%",
 };
 
 const mapOptions = {
   disableDefaultUI: true,
   keyboardShortcuts: false,
   clickableIcons: false,
+  // zoomControl: true, // Optional: Add zoom control if needed
 };
 
-const libraries = ["places"]; // Keep if needed, otherwise remove
+// Define circle options separately for clarity
+const circleOptions = {
+  strokeColor: "#8AB4F8", // Lighter blue for stroke
+  strokeOpacity: 0.6,
+  strokeWeight: 1,
+  fillColor: "#8AB4F8", // Lighter blue for fill
+  fillOpacity: 0.2,
+  clickable: false, // The circle itself shouldn't be clickable
+  draggable: false,
+  editable: false,
+  visible: true,
+  zIndex: 1, // Lower zIndex than the central marker
+};
+
+const libraries = ["places"];
 
 function MapComponent({
   userPosition,
-  drops = [], // Default to empty array
+  userAccuracy, // <-- IMPORTANT: Receive accuracy in meters from parent
+  drops = [],
   selectedDrop,
   onDropClick,
   onInfoWindowClose,
   onCaptureAttempt,
   isUploading,
-  center, // Receive center from parent
-  defaultCenter, // Receive default center
+  center,
+  defaultCenter,
 }) {
   const { isLoaded, loadError } = useJsApiLoader({
-    id: "google-map-script", // Keep a unique ID
-    googleMapsApiKey: process.env.REACT_APP_Maps_API_KEY, // Ensure this env var is accessible
+    id: "google-map-script",
+    googleMapsApiKey: process.env.REACT_APP_Maps_API_KEY,
     libraries: libraries,
   });
 
-  const [map, setMap] = useState(null); // Keep local map instance if needed for internal map methods
+  const [map, setMap] = useState(null);
 
-  const onLoad = useCallback(
-    (mapInstance) => {
-      // No need to set center/zoom here if controlled by 'center' prop in GoogleMap
-      // mapInstance.setCenter(center); // Usually not needed if 'center' prop is set
-      // mapInstance.setZoom(16);      // Usually not needed if 'zoom' prop is set
-      setMap(mapInstance);
-      console.log("Map loaded.");
-    },
-    [] // No dependencies needed if not setting center/zoom manually
-  );
+  const onLoad = useCallback((mapInstance) => {
+    setMap(mapInstance);
+    console.log("Map loaded.");
+  }, []);
 
   const onUnmount = useCallback(() => {
     setMap(null);
@@ -65,25 +76,58 @@ function MapComponent({
     return <div>Loading Map...</div>;
   }
 
-  // Determine the center for the map. Prioritize received center, then userPosition, then default.
   const mapCenter = center || userPosition || defaultCenter;
+
+  // --- Icon Definitions ---
+
+  // Drop Icon (Gift Pin)
+  const customDropIcon = {
+    url: "/icons/giftPin.png",
+    scaledSize: new window.google.maps.Size(30, 40),
+    origin: new window.google.maps.Point(0, 0),
+    anchor: new window.google.maps.Point(15, 40),
+  };
+
+  // User Location Icon (Central Blue Dot - CONSTANT SIZE)
+  // Using SVG path is efficient
+  const userLocationIcon = {
+    path: window.google.maps.SymbolPath.CIRCLE,
+    scale: 8, // <--- This controls the dot's size, keep it constant
+    fillColor: "#1976D2", // Standard blue
+    fillOpacity: 1.0,
+    strokeColor: "#ffffff", // White border for contrast
+    strokeWeight: 2,
+    anchor: new window.google.maps.Point(0, 0), // Center anchor for CIRCLE
+  };
 
   return (
     <GoogleMap
       mapContainerStyle={containerStyle}
-      center={mapCenter} // Control center via prop
-      zoom={16} // Control zoom via prop (or pass as prop if needed)
+      center={mapCenter}
+      zoom={16}
       options={mapOptions}
       onLoad={onLoad}
       onUnmount={onUnmount}
     >
-      {/* User Marker */}
+      {/* === User Location Rendering === */}
+
+      {/* 1. Accuracy Circle (Size based on userAccuracy prop in meters) */}
+      {userPosition && typeof userAccuracy === "number" && userAccuracy > 0 && (
+        <CircleF
+          center={userPosition}
+          radius={userAccuracy} // Dynamically set radius in meters
+          options={circleOptions} // Apply the styling options
+        />
+      )}
+
+      {/* 2. Central Blue Dot Marker (Constant visual size) */}
       {userPosition && (
         <MarkerF
           position={userPosition}
           title={"You are here"}
-          // Optional: Add a custom icon for the user
-          // icon={{ url: '/path/to/user-icon.png', scaledSize: new window.google.maps.Size(30, 30) }}
+          icon={userLocationIcon} // Use the constant size blue dot icon
+          zIndex={5} // Ensure dot is above the circle
+          // No need for scaledSize if using 'scale' with SVG path
         />
       )}
 
@@ -93,9 +137,9 @@ function MapComponent({
           key={drop.id}
           position={drop.position}
           title={drop.name || "Unnamed Drop"}
-          onClick={() => onDropClick(drop)} // Use the passed callback
-          // Optional: Add a custom icon for drops
-          // icon={{ url: '/path/to/drop-icon.png', scaledSize: new window.google.maps.Size(35, 35) }}
+          icon={customDropIcon}
+          onClick={() => onDropClick(drop)}
+          zIndex={3} // Lower zIndex than user marker/circle
         />
       ))}
 
@@ -103,9 +147,11 @@ function MapComponent({
       {selectedDrop && (
         <InfoWindowF
           position={selectedDrop.position}
-          onCloseClick={onInfoWindowClose} // Use the passed callback
+          onCloseClick={onInfoWindowClose}
+          zIndex={10} // InfoWindows usually highest
         >
           <div>
+            {/* ... InfoWindow content ... */}
             <h4>{selectedDrop.name || "Unnamed Drop"}</h4>
             <p>
               Expires:{" "}
@@ -114,21 +160,8 @@ function MapComponent({
                 minute: "2-digit",
               }) || "N/A"}
             </p>
-            {/* Add distance display if userPosition is available */}
-            {/* {userPosition && (
-              <p>
-                Distance:{" "}
-                {getDistanceFromLatLonInKm(
-                  userPosition.lat,
-                  userPosition.lng,
-                  selectedDrop.position.lat,
-                  selectedDrop.position.lng
-                ).toFixed(0)}
-                m
-              </p>
-            )} */}
             <button
-              onClick={() => onCaptureAttempt(selectedDrop)} // Use the passed callback
+              onClick={() => onCaptureAttempt(selectedDrop)}
               disabled={isUploading}
             >
               {isUploading ? "Uploading..." : "Attempt Capture"}
@@ -140,4 +173,4 @@ function MapComponent({
   );
 }
 
-export default React.memo(MapComponent); // Memoize if props don't change often unnecessarily
+export default React.memo(MapComponent);

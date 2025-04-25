@@ -12,7 +12,9 @@ import {
   addDoc,
   getDocs,
   limit,
+  orderBy,
   serverTimestamp,
+  // No need for orderBy or getCountFromServer with the current simple fetch logic
 } from "firebase/firestore";
 import {
   getStorage,
@@ -21,11 +23,13 @@ import {
   getDownloadURL,
 } from "firebase/storage";
 import { db, storage, auth } from "../firebase"; // Ensure auth is imported correctly
-import { FaTrophy } from "react-icons/fa";
-// Import the map display component
-import MapComponent from "../components/MapComponent"; // Adjust path if needed
+import { FaTrophy } from "react-icons/fa"; // Keep your icon import
 
-// --- Geolocation Helper (Keep it here or move to a utils file) ---
+// Import Components
+import MapComponent from "../components/MapComponent";
+import LeaderboardComponent from "../components/LeaderboardComponent"; // <-- Import Leaderboard
+
+// --- Geolocation Helper ---
 function getDistanceFromLatLonInKm(lat1, lon1, lat2, lon2) {
   const R = 6371; // Radius of the earth in km
   const dLat = deg2rad(lat2 - lat1);
@@ -45,21 +49,27 @@ function deg2rad(deg) {
 }
 
 function MapPage() {
+  // --- State Variables ---
   const [userPosition, setUserPosition] = useState(null);
   const [drops, setDrops] = useState([]);
   const [selectedDrop, setSelectedDrop] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
-  const [dropToSubmit, setDropToSubmit] = useState(null); // Store drop info during upload trigger
+  const [dropToSubmit, setDropToSubmit] = useState(null);
+  const [isLeaderboardOpen, setIsLeaderboardOpen] = useState(false); // <-- Leaderboard State
+  const [leaderboardData, setLeaderboardData] = useState([]); // <-- Leaderboard Data State
+  const [isLoadingLeaderboard, setIsLoadingLeaderboard] = useState(false); // <-- Leaderboard Loading State
 
+  // --- Hooks ---
   const navigate = useNavigate();
   const fileInputRef = useRef(null);
 
+  // --- Constants ---
   const defaultCenter = { lat: -37.8111, lng: 144.9469 }; // Flagstaff Gardens approx
-  const DISTANCE_THRESHOLD_METERS = 30; // Keep your desired threshold
+  const DISTANCE_THRESHOLD_METERS = 30; // Capture radius
 
-  // --- Logout Function ---
+  // --- Authentication ---
   const handleLogout = () => {
-    const authInstance = getAuth(); // Use getAuth()
+    const authInstance = getAuth();
     signOut(authInstance)
       .then(() => {
         console.log("User signed out");
@@ -70,7 +80,7 @@ function MapPage() {
       });
   };
 
-  // --- User Location ---
+  // --- User Location Effect ---
   useEffect(() => {
     let watchId;
     if (navigator.geolocation) {
@@ -78,42 +88,35 @@ function MapPage() {
         (position) => {
           const { latitude, longitude } = position.coords;
           setUserPosition({ lat: latitude, lng: longitude });
-          console.log("User position updated:", { latitude, longitude });
+          // console.log("User position updated:", { latitude, longitude }); // Reduce console noise
         },
         (error) => {
           console.error("Error getting user location:", error);
-          // Maybe set to default or show error message?
-          // For now, let's not set default here, MapComponent can handle null userPosition
         },
         { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
       );
     } else {
       console.error("Geolocation is not supported by this browser.");
-      // Handle lack of geolocation support
     }
-
     return () => {
-      if (watchId) {
-        navigator.geolocation.clearWatch(watchId);
-      }
+      if (watchId) navigator.geolocation.clearWatch(watchId);
     };
-  }, []); // Empty dependency array means this runs once on mount
+  }, []);
 
-  // --- Fetch Active Drops ---
+  // --- Fetch Active Drops Effect ---
   useEffect(() => {
     const dropsRef = collection(db, "drops");
     const now = Timestamp.now();
-    // Query for drops where the end time is in the future
-    const q = query(dropsRef, where("endTime", ">=", now));
+    const q = query(dropsRef, where("endTime", ">=", now)); // Drops ending now or later
 
     const unsubscribe = onSnapshot(
       q,
       (querySnapshot) => {
         const activeDrops = [];
-        const currentTime = Timestamp.now(); // Get current time again inside snapshot
+        const currentTime = Timestamp.now();
         querySnapshot.forEach((doc) => {
           const dropData = doc.data();
-          // Double check startTime is also valid (in the past or now)
+          // Also check if drop has started
           if (
             dropData.startTime &&
             dropData.startTime <= currentTime &&
@@ -129,18 +132,75 @@ function MapPage() {
             });
           }
         });
-        console.log("Fetched Active Drops:", activeDrops);
+        // console.log("Fetched Active Drops:", activeDrops); // Reduce console noise
         setDrops(activeDrops);
       },
       (error) => {
         console.error("Error fetching drops:", error);
       }
     );
+    return () => unsubscribe();
+  }, []);
 
-    return () => unsubscribe(); // Cleanup listener on unmount
-  }, []); // Empty dependency array means this runs once on mount
+  // --- Fetch Leaderboard Data Effect (Reads directly from users collection) ---
+  useEffect(() => {
+    if (!isLeaderboardOpen) {
+      return; // Don't fetch if closed
+    }
 
-  // --- Capture Attempt Logic ---
+    const fetchLeaderboard = async () => {
+      setIsLoadingLeaderboard(true);
+      setLeaderboardData([]); // Clear previous data
+      console.log("Fetching leaderboard data from users collection...");
+
+      try {
+        // 1. Reference the 'users' collection
+        const usersRef = collection(db, "user");
+
+        // 2. Create the query: Order by 'point' descending, limit results
+        const q = query(
+          usersRef,
+          orderBy("point", "desc"), // Order by the 'point' field
+          limit(20) // Get the top 20 users (adjust as needed)
+        );
+
+        // 3. Execute the query
+        const querySnapshot = await getDocs(q);
+
+        // 4. Format the data directly from user documents
+        const formattedData = [];
+        querySnapshot.forEach((doc) => {
+          const data = doc.data();
+          const userId = doc.id; // Document ID is the userId
+
+          // Extract username and point, providing fallbacks
+          const username = data.username || `User...${userId.slice(-4)}`; // Use stored username or fallback
+          const score = data.point || 0; // Use stored point or fallback to 0
+
+          formattedData.push({
+            id: userId, // Use the document ID (userId) as the key
+            username: username,
+            score: score,
+          });
+        });
+
+        console.log("Formatted Leaderboard Data:", formattedData);
+        setLeaderboardData(formattedData); // Set the state with the new data
+
+      } catch (error) {
+        console.error("Error fetching leaderboard from users collection:", error);
+        setLeaderboardData([]); // Ensure data is cleared on error
+      } finally {
+        setIsLoadingLeaderboard(false); // Set loading state to false
+      }
+    };
+
+    fetchLeaderboard();
+
+  }, [isLeaderboardOpen]); // Dependency: re-run when isLeaderboardOpen changes
+
+
+  // --- Capture Logic ---
   const handleCaptureAttempt = async (dropData) => {
     const user = auth.currentUser;
     if (!user) {
@@ -155,8 +215,7 @@ function MapPage() {
       );
       return;
     }
-
-    if (!dropData || !dropData.position || !dropData.id) {
+    if (!dropData?.position?.lat || !dropData?.id) {
       console.error("Drop data invalid in handleCaptureAttempt:", dropData);
       alert("Error: Could not identify the selected drop.");
       return;
@@ -168,12 +227,10 @@ function MapPage() {
       dropData.position.lat,
       dropData.position.lng
     );
-
     console.log(`Distance to drop ${dropData.id}: ${distance.toFixed(2)}m`);
 
     if (distance <= DISTANCE_THRESHOLD_METERS) {
       try {
-        // Check if already submitted
         const submissionsRef = collection(db, "submissions");
         const q = query(
           submissionsRef,
@@ -186,12 +243,9 @@ function MapPage() {
         if (!querySnapshot.empty) {
           alert("You have already captured this drop!");
         } else {
-          // Not submitted yet, trigger photo input
-          console.log(
-            "User is close enough and hasn't submitted. Triggering photo input."
-          );
-          setDropToSubmit(dropData); // Store drop info for when file is selected
-          fileInputRef.current?.click(); // Use optional chaining
+          console.log("Close enough & not submitted. Triggering photo input.");
+          setDropToSubmit(dropData);
+          fileInputRef.current?.click();
         }
       } catch (error) {
         console.error("Error checking for existing submission:", error);
@@ -206,22 +260,19 @@ function MapPage() {
     }
   };
 
-  // --- File Selection Handler ---
+  // --- File Handling ---
   const handleFileSelect = (event) => {
-    const file = event.target.files?.[0]; // Use optional chaining
+    const file = event.target.files?.[0];
     const user = auth.currentUser;
 
     if (!file || !dropToSubmit || !user) {
       console.error("File, drop info, or user missing for upload.");
       if (!dropToSubmit)
-        alert(
-          "Could not determine which drop to submit for. Please try capturing again."
-        );
+        alert("Drop context lost. Please try capturing again.");
       setDropToSubmit(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
       return;
     }
-
     if (!file.type.startsWith("image/")) {
       alert("Please select an image file.");
       setDropToSubmit(null);
@@ -229,23 +280,21 @@ function MapPage() {
       return;
     }
 
-    // Proceed with upload
     uploadPhotoAndUpdateFirestore(file, user.uid, dropToSubmit.id);
 
-    // Clear the file input value AFTER initiating the upload process
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
   };
 
-  // --- Upload and Firestore Update ---
+  // --- Upload Logic ---
   const uploadPhotoAndUpdateFirestore = async (file, userId, dropId) => {
     setIsUploading(true);
-    setDropToSubmit(null); // Clear the temporary drop state immediately
+    setDropToSubmit(null); // Clear temp state
 
     const timestamp = Date.now();
     const fileExtension = file.name.split(".").pop();
-    const uniqueFileName = `${userId}-${dropId}-${timestamp}.${fileExtension}`; // Include dropId for clarity
+    const uniqueFileName = `${userId}-${dropId}-${timestamp}.${fileExtension}`;
     const filePath = `submissions/${dropId}/${uniqueFileName}`;
     const storageRef = ref(storage, filePath);
     const uploadTask = uploadBytesResumable(storageRef, file);
@@ -263,7 +312,7 @@ function MapPage() {
         setIsUploading(false);
       },
       async () => {
-        // Upload completed successfully
+        // Success
         try {
           const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
           console.log("File available at", downloadURL);
@@ -274,64 +323,72 @@ function MapPage() {
             dropId: dropId,
             photoUrl: downloadURL,
             timestamp: serverTimestamp(),
-            // Add user position at time of submission if desired
-            // captureLocation: new GeoPoint(userPosition.lat, userPosition.lng)
+            // Optional: captureLocation: new GeoPoint(userPosition.lat, userPosition.lng)
           };
 
           await addDoc(submissionsRef, submissionData);
-          console.log("Submission record added to Firestore for drop:", dropId);
+          console.log("Submission record added for drop:", dropId);
           alert("Drop captured successfully!");
-          setSelectedDrop(null); // Close the InfoWindow
+          setSelectedDrop(null); // Close InfoWindow
         } catch (firestoreError) {
-          console.error(
-            "Error adding submission to Firestore:",
-            firestoreError
-          );
+          console.error("Error adding submission to Firestore:", firestoreError);
           alert(`Capture failed (database error): ${firestoreError.message}`);
-          // Consider how to handle this - maybe delete the uploaded photo?
+          // TODO: Consider deleting the uploaded photo from Storage if Firestore fails
         } finally {
-          setIsUploading(false); // Ensure loading state is turned off
+          setIsUploading(false);
         }
       }
     );
   };
 
-  // --- Navigation Handlers ---
-  const handleGoToLeaderboard = () => {
-    navigate("/leaderboard");
+  // --- Leaderboard Toggle Handlers ---
+  const toggleLeaderboard = () => {
+    setIsLeaderboardOpen(!isLeaderboardOpen);
+  };
+
+  const closeLeaderboard = () => {
+    setIsLeaderboardOpen(false);
   };
 
   // --- Render ---
   return (
-    <div style={{ position: "relative", width: "100vw", height: "100vh" }}>
-      {/* UI Elements Overlaying the Map */}
+    // Added overflow: hidden to prevent body scroll when leaderboard is open
+    <div style={{ position: "relative", width: "100vw", height: "100vh", overflow: "hidden" }}>
+      {/* Logout Button */}
       <div style={{ position: "absolute", top: 10, right: 10, zIndex: 10 }}>
-        <button onClick={handleLogout}>Log Out</button>
+        <button onClick={handleLogout} className="logout-button"> {/* Added class for potential styling */}
+          Log Out
+        </button>
       </div>
-      {/* --- Leaderboard button --- */}
+
+      {/* Leaderboard Button (using FaTrophy) */}
       <div
-        onClick={handleGoToLeaderboard}
+        onClick={toggleLeaderboard} // <-- Use toggleLeaderboard here
         style={{
           position: "absolute",
-          bottom: 14,
-          right: 14,
-          zIndex: 999,
-          backgroundColor: "#6F42C1",
-          padding: 16,
-          borderRadius: "50%",
+          bottom: 14, // Adjust as needed
+          right: 14, // Adjust as needed
+          zIndex: 10, // Ensure it's above map but below leaderboard panel overlay
+          backgroundColor: "#6F42C1", // Purple color from image
+          padding: "16px", // Adjust padding to control size
+          borderRadius: "50%", // Makes it circular
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
+          cursor: "pointer", // Add pointer cursor
+          boxShadow: "0 2px 6px rgba(0,0,0,0.3)", // Optional shadow
         }}
+        role="button" // Accessibility
+        aria-label="Open Leaderboard"
       >
-        <FaTrophy color="white" size={24} />
+        <FaTrophy color="white" size={24} /> {/* White icon */}
       </div>
 
       {/* Hidden File Input */}
       <input
         type="file"
         accept="image/*"
-        capture // Prefer camera on mobile
+        capture
         style={{ display: "none" }}
         ref={fileInputRef}
         onChange={handleFileSelect}
@@ -342,12 +399,21 @@ function MapPage() {
         userPosition={userPosition}
         drops={drops}
         selectedDrop={selectedDrop}
-        onDropClick={setSelectedDrop} // Pass setter function directly
-        onInfoWindowClose={() => setSelectedDrop(null)} // Pass clear function
-        onCaptureAttempt={handleCaptureAttempt} // Pass the handler
+        onDropClick={setSelectedDrop}
+        onInfoWindowClose={() => setSelectedDrop(null)}
+        onCaptureAttempt={handleCaptureAttempt}
         isUploading={isUploading}
-        center={userPosition || defaultCenter} // Center on user or default
-        defaultCenter={defaultCenter} // Pass default just in case
+        center={userPosition || defaultCenter}
+        defaultCenter={defaultCenter}
+      />
+
+      {/* Leaderboard Component */}
+      {/* Rendered based on isLeaderboardOpen state passed down */}
+      <LeaderboardComponent
+        onClose={closeLeaderboard}
+        isOpen={isLeaderboardOpen}
+        leaderboardData={leaderboardData}
+        isLoading={isLoadingLeaderboard}
       />
     </div>
   );

@@ -6,6 +6,7 @@ import { db, auth } from "../firebase"; // <-- Import auth instance
 import { getAuth, signOut } from "firebase/auth"; // <-- Import auth functions
 import { collection, getDocs } from "firebase/firestore";
 import { format } from "date-fns";
+import RewardDetailPopup from "./RewardDetailPopup";
 
 // Placeholder data structure if needed
 const placeholderUser = {
@@ -25,6 +26,8 @@ function UserProfileComponent({
   const [rewards, setRewards] = useState([]);
   const [isLoadingRewards, setIsLoadingRewards] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false); // <-- State for confirmation dialog
+  const [selectedReward, setSelectedReward] = useState(null); // <-- State for selected reward
+  const [isRewardPopupOpen, setIsRewardPopupOpen] = useState(false); // <-- State for popup visibility
   const navigate = useNavigate();
 
   // Use actual data if available and not loading, otherwise use placeholder
@@ -38,6 +41,8 @@ function UserProfileComponent({
     // Reset confirmation dialog if panel is closed/reopened
     if (!isOpen) {
       setShowLogoutConfirm(false);
+      setIsRewardPopupOpen(false); // Close reward popup if profile closes
+      setSelectedReward(null);
     }
 
     if (isOpen && userData?.id && !isLoading) {
@@ -123,6 +128,19 @@ function UserProfileComponent({
         alert(`Error signing out: ${error.message}`); // Inform user
         setShowLogoutConfirm(false); // Hide dialog even on error
       });
+  };
+
+  // --- Reward Popup Handlers ---
+  const handleRewardClick = (rewardData) => {
+    setSelectedReward(rewardData);
+    setIsRewardPopupOpen(true);
+  };
+ 
+  const handleCloseRewardPopup = () => {
+    setIsRewardPopupOpen(false);
+    // Optional: Delay clearing selectedReward slightly for fade-out animation
+    // setTimeout(() => setSelectedReward(null), 300);
+    setSelectedReward(null);
   };
 
   // Slice rewards for display
@@ -415,7 +433,13 @@ function UserProfileComponent({
 
                 {!isLoadingRewards && displayedRewards.length > 0
                   ? displayedRewards.map((reward) => (
-                      <div key={reward.id} className="reward-card">
+                      <div key={reward.id}
+                       className="reward-card"
+                         onClick={() => handleRewardClick(reward)} // <-- Add onClick
+                         role="button" // <-- Accessibility
+                         tabIndex={0} // <-- Accessibility
+                         style={{ cursor: 'pointer' }} // <-- Visual cue
+                       >
                         <div className="reward-icon-bg">
                           <FaGift />
                         </div>
@@ -479,6 +503,12 @@ function UserProfileComponent({
           </div>
         </div>
       </div>
+      {/* Render Reward Detail Popup */}
+      <RewardDetailPopup
+        isOpen={isRewardPopupOpen}
+        onClose={handleCloseRewardPopup}
+        reward={selectedReward}
+      />
     </>
   );
 }

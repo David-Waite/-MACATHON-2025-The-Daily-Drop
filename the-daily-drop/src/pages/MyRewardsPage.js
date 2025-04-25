@@ -5,6 +5,7 @@ import { FaArrowLeft, FaGift } from "react-icons/fa";
 import { db, auth } from "../firebase"; // Import auth and db
 import { collection, getDocs, query, orderBy } from "firebase/firestore"; // Import necessary Firestore functions
 import { format } from "date-fns";
+import RewardDetailPopup from "../components/RewardDetailPopup";
 
 // --- Date Formatting Helper (Copied from UserProfileComponent) ---
 const formatExpiryDate = (timestamp) => {
@@ -25,6 +26,8 @@ function MyRewardsPage() {
   const [rewards, setRewards] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [selectedReward, setSelectedReward] = useState(null); // <-- State for selected reward
+  const [isRewardPopupOpen, setIsRewardPopupOpen] = useState(false); // <-- State for popup visibility
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -85,6 +88,18 @@ function MyRewardsPage() {
   const handleBack = () => {
     navigate(-1); // Go back to the previous page (likely the map)
   };
+
+   // --- Reward Popup Handlers ---
+  const handleRewardClick = (rewardData) => {
+     setSelectedReward(rewardData);
+     setIsRewardPopupOpen(true);
+   };
+  
+   const handleCloseRewardPopup = () => {
+     setIsRewardPopupOpen(false);
+     setSelectedReward(null);
+   };
+
 
   return (
     <>
@@ -181,7 +196,13 @@ function MyRewardsPage() {
             !error &&
             rewards.length > 0 &&
             rewards.map((reward) => (
-              <div key={reward.id} className="reward-card">
+              <div key={reward.id} 
+              className="reward-card"
+                onClick={() => handleRewardClick(reward)} // <-- Add onClick
+                role="button" // <-- Accessibility
+                tabIndex={0} // <-- Accessibility
+                style={{ cursor: 'pointer' }} // <-- Visual cue
+              >
                 <div className="reward-icon-bg">
                   <FaGift />
                 </div>
@@ -197,6 +218,12 @@ function MyRewardsPage() {
             ))}
         </div>
       </div>
+      {/* Render Reward Detail Popup */}
+     <RewardDetailPopup
+       isOpen={isRewardPopupOpen}
+       onClose={handleCloseRewardPopup}
+       reward={selectedReward}
+     />
     </>
   );
 }

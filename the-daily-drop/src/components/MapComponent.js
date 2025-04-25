@@ -70,6 +70,7 @@ function MapComponent({
   zoom,
   defaultCenter,
   onMapClick,
+  onImageChange,
 }) {
   const { isLoaded, loadError } = useJsApiLoader({
     id: "google-map-script",
@@ -80,6 +81,7 @@ function MapComponent({
   const mapRef = useRef(null);
   const [countdownText, setCountdownText] = useState(""); // State for the countdown display
   const intervalRef = useRef(null); // Ref to store interval ID
+  const [image, setImage] = useState(null); // Image file
 
   // --- Callbacks ---
   const onLoad = useCallback((mapInstance) => {
@@ -337,6 +339,11 @@ function MapComponent({
                     </p>
                   </div>
                   <div>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={onImageChange}
+                    />
                     <button
                       onClick={() => onCaptureAttempt(selectedDrop)}
                       disabled={isUploading}

@@ -53,7 +53,7 @@ function deg2rad(deg) {
 const DEFAULT_ZOOM = 16; // Standard map zoom level
 const CLICKED_ZOOM = 20; // Zoom level when a drop is clicked
 const defaultCenter = { lat: -37.8111, lng: 144.9469 }; // Flagstaff Gardens approx
-const DISTANCE_THRESHOLD_METERS = 30; // Capture radius
+const DISTANCE_THRESHOLD_METERS = 3000; // Capture radius
 
 function MapPage() {
   // --- State Variables ---
@@ -72,12 +72,11 @@ function MapPage() {
   const [currentCenter, setCurrentCenter] = useState(null);
   const [mapZoom, setMapZoom] = useState(DEFAULT_ZOOM); // <-- ADDED zoom state
   const [isFirstLocationUpdate, setIsFirstLocationUpdate] = useState(true);
-
+  const [image, setImage] = useState(null); // Image file
   // --- Hooks ---
   const navigate = useNavigate();
   const fileInputRef = useRef(null);
   const watchIdRef = useRef(null);
-
 
   // --- User Location Effect ---
   useEffect(() => {
@@ -262,16 +261,41 @@ function MapPage() {
           limit(1)
         );
         const querySnapshot = await getDocs(q);
+
         if (!querySnapshot.empty) {
           alert("You have already captured this drop!");
+          // Optional: Clear the image state if they already captured it
+          // setImage(null);
         } else {
-          console.log("Close enough & not submitted. Triggering photo input.");
-          setDropToSubmit(dropData);
-          fileInputRef.current?.click();
+          // ---vvv--- MODIFIED PART ---vvv---
+          // Checks passed & not submitted before. Now check if image exists in state.
+          if (image) {
+            console.log(
+              "Close enough, image selected, & not submitted. Proceeding with upload."
+            );
+            // Call the upload function directly with the file from state
+            uploadPhotoAndUpdateFirestore(image, currentUserId, dropData.id);
+            // Optional: Clear image state immediately after starting upload attempt
+            // setImage(null);
+          } else {
+            // This case means the checks passed, but no image was selected beforehand.
+            console.error(
+              "Capture attempt approved, but no image is selected in state."
+            );
+            alert(
+              "An image is required to capture the drop. Please select one first."
+            );
+            // You might want to prompt the user to select an image here,
+            // depending on your UI flow (e.g., trigger the original fileInputRef if it still exists)
+            // fileInputRef.current?.click(); // Example: Trigger input if needed
+          }
+          // ---^^^--- END OF MODIFIED PART ---^^^---
         }
       } catch (error) {
         console.error("Error checking for existing submission:", error);
         alert("Could not verify submission status. Please try again.");
+        // Optional: Ensure isUploading is false if an error occurs here
+        // if (typeof setIsUploading === 'function') setIsUploading(false);
       }
     } else {
       alert(
@@ -308,12 +332,23 @@ function MapPage() {
 
   // --- Upload Logic ---
   const uploadPhotoAndUpdateFirestore = async (file, userId, dropId) => {
-    setIsUploading(true);
-    setDropToSubmit(null);
+    // Ensure you have setIsUploading state setter available in this scope
+    if (typeof setIsUploading === "function") setIsUploading(true);
+
+    // REMOVED: setDropToSubmit(null); - This state wasn't needed in the modified flow
+
+    // Add a check if the file is valid before proceeding
+    if (!file || !(file instanceof File)) {
+      console.error("Upload function called without a valid file:", file);
+      alert("Cannot upload: Invalid file provided.");
+      if (typeof setIsUploading === "function") setIsUploading(false);
+      return; // Stop execution if file is invalid
+    }
+
     const timestamp = Date.now();
     const fileExtension = file.name.split(".").pop();
     const uniqueFileName = `${userId}-${dropId}-${timestamp}.${fileExtension}`;
-    const filePath = `submissions/${dropId}/${uniqueFileName}`;
+    const filePath = `submissions/${dropId}/${uniqueFileName}`; // Organise uploads by dropId
     const storageRef = ref(storage, filePath);
     const uploadTask = uploadBytesResumable(storageRef, file);
 
@@ -321,42 +356,62 @@ function MapPage() {
       "state_changed",
       (snapshot) => {
         // Optional progress tracking
+        const progress =
+          (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+        console.log("Upload is " + progress + "% done");
+        // You could update state here to show progress visually
       },
       (error) => {
+        // Handle unsuccessful uploads
         console.error("Upload failed:", error);
         alert(`Upload failed: ${error.message}`);
-        setIsUploading(false);
+        if (typeof setIsUploading === "function") setIsUploading(false);
       },
       async () => {
+        // Handle successful uploads on complete
         try {
           const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
           console.log("File available at", downloadURL);
+
+          // Add submission record to Firestore
           const submissionsRef = collection(db, "submissions");
           const submissionData = {
             userId: userId,
             dropId: dropId,
             photoUrl: downloadURL,
             timestamp: serverTimestamp(),
-            // Optional: captureLocation: new GeoPoint(userPosition.lat, userPosition.lng)
+            // Add userPosition if it's available and needed
+            ...(userPosition && {
+              captureLocation: new GeoPoint(userPosition.lat, userPosition.lng),
+            }),
           };
+
           await addDoc(submissionsRef, submissionData);
           console.log("Submission record added for drop:", dropId);
           alert("Drop captured successfully!");
-          setSelectedDrop(null); // Close InfoWindow
-          setMapZoom(DEFAULT_ZOOM); // <-- RESET ZOOM ON SUCCESSFUL CAPTURE
+
+          // Reset UI state after successful capture
+          if (typeof setSelectedDrop === "function") setSelectedDrop(null); // Close InfoWindow/Overlay
+          if (typeof setMapZoom === "function") setMapZoom(DEFAULT_ZOOM); // Reset zoom
+          if (typeof setImage === "function") setImage(null); // Clear the selected image state
         } catch (firestoreError) {
           console.error(
             "Error adding submission to Firestore:",
             firestoreError
           );
-          alert(`Capture failed (database error): ${firestoreError.message}`);
+          // Inform user about the specific error phase
+          alert(
+            `Capture successful, but saving failed: ${firestoreError.message}. Please try refreshing.`
+          );
+          // Note: The image *is* uploaded to storage here, but the Firestore record failed.
+          // You might need manual cleanup or retry logic depending on requirements.
         } finally {
-          setIsUploading(false);
+          // Ensure uploading state is reset regardless of Firestore success/failure
+          if (typeof setIsUploading === "function") setIsUploading(false);
         }
       }
     );
   };
-
   // --- Leaderboard Toggle Handlers ---
   const toggleLeaderboard = () => setIsLeaderboardOpen(!isLeaderboardOpen);
   const closeLeaderboard = () => setIsLeaderboardOpen(false);
@@ -364,8 +419,8 @@ function MapPage() {
   // --- Profile Toggle Handlers ---
   const toggleProfile = () => {
     console.log("Toggling profile. Current state:", isProfileOpen);
-      setIsProfileOpen(!isProfileOpen);
-  }
+    setIsProfileOpen(!isProfileOpen);
+  };
   const closeProfile = () => setIsProfileOpen(false);
 
   // --- Map Interaction Handlers ---
@@ -427,6 +482,12 @@ function MapPage() {
     }
   }, [userPosition]); // Dependency: userPosition
 
+  const handleImageChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setImage(file);
+    }
+  };
   // --- Render ---
   return (
     <div
@@ -437,8 +498,8 @@ function MapPage() {
         overflow: "hidden",
       }}
     >
-     {/* Log state during render */}
-     {console.log("MapPage render - isProfileOpen:", isProfileOpen)}
+      {/* Log state during render */}
+      {console.log("MapPage render - isProfileOpen:", isProfileOpen)}
       {/* Leaderboard Button */}
       <div
         onClick={toggleLeaderboard}
@@ -513,15 +574,7 @@ function MapPage() {
         type="file"
         accept="image/*"
         style={{
-          position: "absolute !important",
-          height: "1px",
-          width: "1px",
-          overflow: "hidden",
-          clip: "rect(1px, 1px, 1px, 1px)",
-          whiteSpace: "nowrap" /* prevent line breaks */,
-          border: 0,
-          padding: 0,
-          margin: " -1px",
+          display: "none",
         }}
         ref={fileInputRef}
         onChange={handleFileSelect}
@@ -541,6 +594,7 @@ function MapPage() {
         zoom={mapZoom} // <-- Pass zoom state
         defaultCenter={defaultCenter}
         onMapClick={handleOverlayClose} // <-- Close overlay/reset zoom on map click
+        onImageChange={handleImageChange}
       />
 
       {/* Leaderboard Component */}

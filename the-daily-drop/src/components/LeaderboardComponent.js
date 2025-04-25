@@ -3,19 +3,6 @@ import React, { useState, useRef } from "react";
 import { FaChevronDown } from "react-icons/fa";
 import { useDrag } from "@use-gesture/react";
 // Default placeholder data if nothing is passed or while loading initially
-const placeholderData = [
-  { id: "1", username: "Qwerty", score: 5716 },
-  { id: "2", username: "Qwerty123", score: 3628 },
-  { id: "3", username: "Qwerty123", score: 3422 },
-  { id: "4", username: "Qwerty123", score: 2928 },
-  { id: "5", username: "Qwerty123", score: 2668 },
-  { id: "6", username: "Qwerty123", score: 2257 },
-  { id: "7", username: "Qwerty123", score: 2043 },
-  { id: "8", username: "Qwerty123", score: 1876 },
-  { id: "9", username: "Qwerty123", score: 1753 },
-  { id: "10", username: "Qwerty123", score: 1681 },
-];
-
 function LeaderboardComponent({
   onClose,
   isOpen, // Controls visibility and animation
@@ -189,13 +176,23 @@ const panelStyle = {
             width: 35px;
             height: 35px;
             border-radius: 50%;
-            background-color: #ced4da; /* Placeholder color */
+            background-color: #6f42c1; /* Placeholder color */
             margin-right: 15px;
             flex-shrink: 0;
+            /* --- Added styles for centering text --- */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.1em; /* Adjust size */
+            font-weight: bold;
+            color: #f8f9fa; /* Dark grey text */
+            /* --- End Added styles --- */
           }
 
           .leaderboard-item.top .leaderboard-avatar {
             background-color: #f8f9fa; /* Lighter circle on purple */
+            color: #6f42c1; /* Dark grey text */
+
           }
 
           .leaderboard-name {
@@ -209,9 +206,25 @@ const panelStyle = {
           .leaderboard-score {
             font-weight: bold;
             font-size: 1.1em;
-            min-width: 50px;
             text-align: right;
+           white-space: nowrap; /* Prevent score/label wrapping */
+           color: #333; /* Default text color */
+           flex-shrink: 0; /* Prevent score from shrinking */
           }
+           /* Ensure score color is overridden in top item */
+          .leaderboard-item.top .leaderboard-score {
+             color: white;
+          }
+        .score-label {
+             font-size: 0.8em; /* Smaller font size for the label */
+             font-weight: normal; /* Normal weight for the label */
+             margin-left: 4px; /* Space between number and label */
+             color: #555; /* Grey color for the label */
+         }
+         /* Ensure label color is overridden in top item */
+         .leaderboard-item.top .score-label {
+             color: #f0f0f0; /* Lighter grey/white for top item label */
+         }
 
           .leaderboard-footer {
             padding: 10px;
@@ -240,26 +253,20 @@ const panelStyle = {
         onClick={onClose}
         aria-hidden={!isOpen}
       >
-        {/* Add the ref and spread the bind() properties here */}
-        {/* Apply the dynamic panelStyle */}
         <div
           ref={panelRef}
-          {...bind()} // <-- Apply the drag handlers
+          {...bind()}
           className={`leaderboard-panel ${isOpen ? "open" : ""}`}
-          style={panelStyle} // <-- Apply dynamic style for drag feedback/transition control
+          style={panelStyle}
           onClick={(e) => e.stopPropagation()}
         >
           <div className="leaderboard-header">
             <h2>Leaderboard</h2>
           </div>
 
-          {/* Loading/Empty/List states */}
-          {isLoading && (
-            <p className="loading-message">Loading leaderboard...</p>
-          )}
-          {!isLoading && dataToDisplay.length === 0 && (
-            <p className="empty-message">No scores yet. Go capture some drops!</p>
-          )}
+          {isLoading && ( <p className="loading-message">Loading leaderboard...</p> )}
+          {!isLoading && dataToDisplay.length === 0 && ( <p className="empty-message">No scores yet. Go capture some drops!</p> )}
+
           {!isLoading && dataToDisplay.length > 0 && (
             <ul className="leaderboard-list">
               {dataToDisplay.map((entry, index) => (
@@ -267,15 +274,22 @@ const panelStyle = {
                   key={entry.id}
                   className={`leaderboard-item ${index === 0 ? "top" : ""}`}
                 >
-                  <div className="leaderboard-avatar"></div>
+                  {/* --- Updated Avatar Div --- */}
+                  <div className="leaderboard-avatar">
+                    {/* Display first letter of username or '?' */}
+                    {entry.username ? entry.username.charAt(0).toUpperCase() : '?'}
+                  </div>
+                  {/* --- End Updated Avatar Div --- */}
                   <span className="leaderboard-name">{entry.username}</span>
-                  <span className="leaderboard-score">{entry.score}</span>
+                  <span className="leaderboard-score">
+                    {entry.score}
+                    <span className="score-label">Drops</span>
+                  </span>
                 </li>
               ))}
             </ul>
           )}
 
-          {/* Footer still closes on click */}
           <div
             className="leaderboard-footer"
             onClick={onClose}

@@ -314,20 +314,53 @@ function MapComponent({
         />
       ))}
       {/* Selected Drop InfoWindow */}
+      {/* Selected Drop InfoWindow */}
       {selectedDrop && (
         <InfoWindowF
           position={selectedDrop.position}
           onCloseClick={onInfoWindowClose}
           zIndex={10}
+          // Optional: Set a maxWidth for the InfoWindow container itself
+          // options={{ maxWidth: 350 }}
         >
-          <div>
-            <h4>{selectedDrop.name || "Unnamed Drop"}</h4>
+          {/* Style this inner div with a max-width instead of viewport width */}
+          {/* Using 'vw' units here often leads to unwanted scrollbars */}
+          <div
+            style={{ maxWidth: "300px", padding: "5px" /* Add some padding */ }}
+          >
+            {/* Conditionally render the image if imageUrl exists */}
+            {selectedDrop.imageUrl && (
+              <img
+                src={selectedDrop.imageUrl}
+                alt={selectedDrop.name || "Drop image"}
+                style={{
+                  width: "100%", // Make image fill the container width
+                  maxHeight: "150px", // Limit height to prevent overly tall InfoWindows
+                  objectFit: "cover", // Cover the area, cropping if necessary
+                  marginBottom: "10px", // Add space below the image
+                  borderRadius: "4px", // Optional: round corners
+                }}
+                // Optional: Add error handling for broken image links
+                onError={(e) => {
+                  e.target.style.display = "none"; // Hide broken image icon
+                  // Optionally display a placeholder or message
+                }}
+              />
+            )}
 
-            <p>
+            {/* Keep existing content */}
+            <h4 style={{ marginTop: 0, marginBottom: "8px" }}>
+              {" "}
+              {/* Adjust heading margin */}
+              {selectedDrop.name || "Unnamed Drop"}
+            </h4>
+
+            <p style={{ marginBottom: "12px", fontSize: "0.9em" }}>
+              {" "}
+              {/* Adjust paragraph margin/size */}
               Expires:
               {selectedDrop.endTime?.toDate().toLocaleTimeString([], {
                 hour: "2-digit",
-
                 minute: "2-digit",
               }) || "N/A"}
             </p>
@@ -335,8 +368,9 @@ function MapComponent({
             <button
               onClick={() => onCaptureAttempt(selectedDrop)}
               disabled={isUploading}
+              style={{ width: "100%", padding: "8px" }} // Style button
             >
-              {isUploading ? "Uploading..." : "Attempt Capture"} 
+              {isUploading ? "Uploading..." : "Attempt Capture"}
             </button>
           </div>
         </InfoWindowF>

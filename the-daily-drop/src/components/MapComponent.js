@@ -71,6 +71,7 @@ function MapComponent({
   defaultCenter,
   onMapClick,
   onImageChange,
+  selectedImageFile,
 }) {
   const { isLoaded, loadError } = useJsApiLoader({
     id: "google-map-script",
@@ -81,13 +82,51 @@ function MapComponent({
   const mapRef = useRef(null);
   const [countdownText, setCountdownText] = useState(""); // State for the countdown display
   const intervalRef = useRef(null); // Ref to store interval ID
-  const [image, setImage] = useState(null); // Image file
 
   // --- Callbacks ---
   const onLoad = useCallback((mapInstance) => {
     mapRef.current = mapInstance;
     console.log("Map loaded.");
   }, []);
+
+  const hiddenInputStyle = {
+    position: "absolute",
+    width: "1px",
+    height: "1px",
+    padding: 0,
+    margin: "-1px", // Offset to ensure it's truly off-screen
+    overflow: "hidden",
+    clip: "rect(0, 0, 0, 0)", // Clip visibility
+    whiteSpace: "nowrap", // Prevent line wrapping affecting layout
+    borderWidth: 0, // No border
+  };
+
+  const buttonLabelStyle = {
+    display: "block", // Make it block-level to take full width easily
+    width: "100%", // Occupy full width of its container
+    paddingTop: "8px", // Vertical padding
+    paddingBottom: "8px",
+    paddingLeft: "12px", // Horizontal padding
+    paddingRight: "12px",
+    // --- Conditional Background Color ---
+    backgroundColor: isUploading
+      ? "#a381d6" // Lighter purple when uploading (disabled look)
+      : selectedImageFile
+      ? "#5a3c9e" // Darker purple when ready to capture (indicates action change)
+      : "#6F42C1", // Default purple when asking to select
+    border: "none", // No border
+    color: "white", // Text color
+    borderRadius: 15, // Rounded corners
+    textAlign: "center", // Center the text
+    // --- Conditional Cursor ---
+    cursor: isUploading ? "not-allowed" : "pointer", // Indicate non-interactive state
+    fontSize: "16px", // Adjust as needed
+    fontWeight: "bold", // Adjust as needed
+    // --- Conditional Opacity ---
+    opacity: isUploading ? 0.7 : 1, // Dim when uploading
+    userSelect: "none", // Prevent text selection on clicking the label
+    boxSizing: "border-box", // Include padding/border in width calculation
+  };
 
   const onUnmount = useCallback(() => {
     mapRef.current = null;
@@ -339,28 +378,49 @@ function MapComponent({
                     </p>
                   </div>
                   <div>
+                    {/* 1. Hidden actual file input */}
                     <input
                       type="file"
-                      accept="image/*"
-                      onChange={onImageChange}
+                      accept="image/*" // Only allow image files
+                      onChange={onImageChange} // Calls parent handler when a file is selected
+                      id="hidden-file-input" // Unique ID for the label to reference
+                      style={hiddenInputStyle} // Apply styles to hide it
+                      disabled={isUploading} // Disable if uploading
+                      // Note: If you have issues re-selecting the *same* file, you might need
+                      // to clear this input's value when `selectedImageFile` becomes null.
+                      // This usually involves a ref and an effect, but often just clearing
+                      // the parent state (`selectedImageFile = null`) is sufficient.
                     />
-                    <button
-                      onClick={() => onCaptureAttempt(selectedDrop)}
-                      disabled={isUploading}
-                      style={{
-                        width: "100%",
-                        paddingTop: "8px",
-                        paddingBottom: "8px",
-                        paddingLeft: "12px",
-                        paddingRight: "12px",
-                        backgroundColor: "#6F42C1",
-                        border: "none",
-                        color: "white",
-                        borderRadius: 15,
-                      }}
+
+                    {/* 2. Styled Label acting as the button */}
+                    <label
+                      // Link to input only if no file is selected AND not uploading
+                      htmlFor={
+                        !selectedImageFile && !isUploading
+                          ? "hidden-file-input"
+                          : undefined
+                      }
+                      style={buttonLabelStyle} // Apply the button-like styles
+                      // Trigger capture ONLY if a file IS selected AND not uploading
+                      onClick={
+                        selectedImageFile && !isUploading
+                          ? () => onCaptureAttempt(selectedDrop)
+                          : undefined
+                      }
+                      role="button" // Semantic role
+                      aria-disabled={isUploading} // Accessibility state
+                      tabIndex={isUploading ? -1 : 0} // Control focusability
                     >
-                      {isUploading ? "Uploading..." : "Take Photo"}
-                    </button>
+                      {/* --- Conditional Button Text --- */}
+                      {
+                        isUploading
+                          ? "Uploading..." // Upload in progress text
+                          : selectedImageFile
+                          ? "Capture with Photo" // File selected, ready to capture text
+                          : "Select Photo" // Initial state text
+                      }
+                    </label>
+                    {/* 3. Optional: Display selected file name below the button */}
                   </div>
                 </div>
               </div>

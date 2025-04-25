@@ -62,7 +62,6 @@ function MapPage() {
   const [drops, setDrops] = useState([]);
   const [selectedDrop, setSelectedDrop] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
-  const [dropToSubmit, setDropToSubmit] = useState(null);
   const [isLeaderboardOpen, setIsLeaderboardOpen] = useState(false);
   const [leaderboardData, setLeaderboardData] = useState([]);
   const [isLoadingLeaderboard, setIsLoadingLeaderboard] = useState(false);
@@ -75,7 +74,6 @@ function MapPage() {
   const [image, setImage] = useState(null); // Image file
   // --- Hooks ---
   const navigate = useNavigate();
-  const fileInputRef = useRef(null);
   const watchIdRef = useRef(null);
 
   // --- User Location Effect ---
@@ -306,36 +304,10 @@ function MapPage() {
     }
   };
 
-  // --- File Handling ---
-  const handleFileSelect = (event) => {
-    const file = event.target.files?.[0];
-    const user = auth.currentUser;
-    if (!file || !dropToSubmit || !user) {
-      console.error("File, drop info, or user missing for upload.");
-      if (!dropToSubmit)
-        alert("Drop context lost. Please try capturing again.");
-      setDropToSubmit(null);
-      if (fileInputRef.current) fileInputRef.current.value = "";
-      return;
-    }
-    if (!file.type.startsWith("image/")) {
-      alert("Please select an image file.");
-      setDropToSubmit(null);
-      if (fileInputRef.current) fileInputRef.current.value = "";
-      return;
-    }
-    uploadPhotoAndUpdateFirestore(file, user.uid, dropToSubmit.id);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
-  };
-
   // --- Upload Logic ---
   const uploadPhotoAndUpdateFirestore = async (file, userId, dropId) => {
     // Ensure you have setIsUploading state setter available in this scope
     if (typeof setIsUploading === "function") setIsUploading(true);
-
-    // REMOVED: setDropToSubmit(null); - This state wasn't needed in the modified flow
 
     // Add a check if the file is valid before proceeding
     if (!file || !(file instanceof File)) {
@@ -380,6 +352,7 @@ function MapPage() {
             dropId: dropId,
             photoUrl: downloadURL,
             timestamp: serverTimestamp(),
+            status: "Pending",
             // Add userPosition if it's available and needed
             ...(userPosition && {
               captureLocation: new GeoPoint(userPosition.lat, userPosition.lng),
@@ -569,17 +542,6 @@ function MapPage() {
         <FaUser color="white" size={24} />
       </div>
 
-      {/* Hidden File Input */}
-      <input
-        type="file"
-        accept="image/*"
-        style={{
-          display: "none",
-        }}
-        ref={fileInputRef}
-        onChange={handleFileSelect}
-      />
-
       {/* Map Component */}
       <MapComponent
         userPosition={userPosition}
@@ -595,6 +557,7 @@ function MapPage() {
         defaultCenter={defaultCenter}
         onMapClick={handleOverlayClose} // <-- Close overlay/reset zoom on map click
         onImageChange={handleImageChange}
+        selectedImageFile={image}
       />
 
       {/* Leaderboard Component */}

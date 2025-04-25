@@ -1,33 +1,29 @@
+// src/pages/SignUpPage.js
 import React, { useState } from "react";
 import { createUserWithEmailAndPassword } from "firebase/auth";
-import { auth } from "../firebase"; // Import the auth instance from your firebase.js file
-import { NavLink } from "react-router";
+import { auth, db } from "../firebase"; // Import db for Firestore
+import { doc, setDoc, serverTimestamp  } from "firebase/firestore"; // Import Firestore functions
+import { NavLink, useNavigate } from "react-router-dom"; // Combined imports
 
-// Define the props interface if using TypeScript (optional but good practice)
-// interface SignUpPageProps {
-//   switchToLogin: () => void; // Function to switch view back to Login
-//   onSignUpSuccess?: () => void; // Optional: Callback for successful signup
-// }
+function SignUpPage() {
+  const navigate = useNavigate();
 
-// Functional component for the Sign Up Page
-// function SignUpPage({ switchToLogin, onSignUpSuccess }: SignUpPageProps) { // TypeScript version
-function SignUpPage({ switchToLogin, onSignUpSuccess }) {
-  // JavaScript version
-
-  // State hooks for input fields
+  // State hooks
   const [email, setEmail] = useState("");
+  const [username, setUsername] = useState(""); // <-- Add state for username
   const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [error, setError] = useState(""); // State to hold potential signup errors
-  const [loading, setLoading] = useState(false); // State to indicate loading status
+  const [confirmPassword, setConfirmPassword] = useState(""); // Keep for validation
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
   // Handler for form submission
   const handleSubmit = async (event) => {
-    event.preventDefault(); // Prevent default browser form submission
-    setError(""); // Clear previous errors
+    event.preventDefault();
+    setError("");
 
-    // --- Basic Validation ---
-    if (!email || !password || !confirmPassword) {
+    // --- Validation ---
+    // Add username check
+    if (!email || !username || !password || !confirmPassword) {
       setError("Please fill in all fields.");
       return;
     }
@@ -35,147 +31,201 @@ function SignUpPage({ switchToLogin, onSignUpSuccess }) {
       setError("Passwords do not match.");
       return;
     }
-    // Add more complex password validation if needed (length, characters etc.)
     if (password.length < 6) {
       setError("Password should be at least 6 characters long.");
       return;
     }
+    // Optional: Add username validation (e.g., length, allowed characters)
+    if (username.length < 3) {
+      setError("Username must be at least 3 characters long.");
+      return;
+    }
     // --- End Validation ---
 
-    setLoading(true); // Set loading state
+    setLoading(true);
 
     try {
-      // Attempt to create a new user with Firebase Authentication
+      // 1. Create user in Firebase Auth
       const userCredential = await createUserWithEmailAndPassword(
         auth,
         email,
         password
       );
-      console.log("User signed up successfully:", userCredential.user.uid);
+      const user = userCredential.user;
+      console.log("User signed up in Auth successfully:", user.uid);
 
-      // Sign up successful!
-      setLoading(false);
-      // Clear form - though usually you navigate away immediately
-      // setEmail('');
-      // setPassword('');
-      // setConfirmPassword('');
+      // 2. Create user document in Firestore
+      // Use user.uid as the document ID in the 'users' collection
+      const userDocRef = doc(db, "user", user.uid);
 
-      // Optional: Call a success handler passed via props if needed
-      if (onSignUpSuccess) {
-        onSignUpSuccess();
-      }
+      // Data to store in the user's document
+      const userData = {
+        username: username, // Store the entered username
+        email: email, // Store email for reference if needed
+        point: 0, // Initialize points to 0
+        createdAt: serverTimestamp(), // Optional: track creation time
+      };
 
-      // NOTE: Just like login, you typically rely on the `onAuthStateChanged`
-      // listener in your main App component to detect the newly signed-up user
-      // and automatically navigate them to the main part of the application.
+      // Set the document in Firestore
+      await setDoc(userDocRef, userData);
+      console.log("User document created in Firestore.");
+
+      // Sign up successful! Navigate away.
+      // setLoading(false); // Navigation will unmount component
+      navigate("/map"); // Navigate to the main map page after successful signup & doc creation
+
     } catch (err) {
-      // Handle Firebase errors
+      // Handle Firebase errors (Auth or Firestore)
       console.error("Sign up failed:", err.code, err.message);
       let friendlyErrorMessage = "Failed to sign up. Please try again.";
       if (err.code === "auth/email-already-in-use") {
         friendlyErrorMessage = "This email address is already registered.";
       } else if (err.code === "auth/weak-password") {
-        friendlyErrorMessage =
-          "Password is too weak. It should be at least 6 characters long.";
+        friendlyErrorMessage = "Password is too weak (min. 6 characters).";
       } else if (err.code === "auth/invalid-email") {
         friendlyErrorMessage = "Please enter a valid email address.";
       }
       // Add more specific Firebase Auth error codes as needed
+      // Firestore errors during setDoc might also occur (e.g., permissions)
 
       setError(friendlyErrorMessage);
       setLoading(false); // Reset loading state on error
     }
   };
 
-  // Basic inline styles (reuse from LoginPage or use CSS classes)
+  // --- Styles (Reusing from LoginPage with minor adjustments) ---
   const styles = {
-    /* ... same styles as LoginPage ... */
-    container: {
+    pageContainer: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      minHeight: "100vh",
+      backgroundColor: "#6A0DAD", // Deep purple background
+      padding: "20px",
+    },
+    card: {
+      backgroundColor: "white",
+      padding: "40px 30px",
+      borderRadius: "20px",
+      boxShadow: "0 8px 25px rgba(0, 0, 0, 0.15)",
       display: "flex",
       flexDirection: "column",
       alignItems: "center",
-      justifyContent: "center",
-      padding: "2rem",
-      maxWidth: "400px",
-      margin: "50px auto",
-      border: "1px solid #ccc",
-      borderRadius: "8px",
-      boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
+      width: "100%",
+      maxWidth: "380px",
+      textAlign: "center",
     },
-    form: { display: "flex", flexDirection: "column", width: "100%" },
+    logo: {
+      width: "60px",
+      height: "auto",
+      marginBottom: "30px",
+    },
+    form: {
+      display: "flex",
+      flexDirection: "column",
+      width: "100%",
+      alignItems: "center",
+    },
     input: {
-      marginBottom: "1rem",
-      padding: "0.8rem",
+      width: "100%",
+      padding: "12px 15px",
+      marginBottom: "15px",
       fontSize: "1rem",
-      border: "1px solid #ccc",
-      borderRadius: "4px",
+      border: "none",
+      borderRadius: "10px",
+      backgroundColor: "#f0f0f0",
+      boxSizing: "border-box",
     },
     button: {
-      padding: "0.8rem",
+      width: "100%",
+      padding: "12px",
+      marginTop: "10px", // Space above button
       fontSize: "1rem",
-      backgroundColor: "#28a745",
-      /* Green for sign up */ color: "white",
+      fontWeight: "bold",
+      color: "white",
+      backgroundColor: "#E91E63", // Pink color for button
       border: "none",
-      borderRadius: "4px",
+      borderRadius: "10px",
       cursor: "pointer",
+      transition: "opacity 0.2s",
       opacity: loading ? 0.7 : 1,
+      marginBottom: "25px", // Space below button before link
     },
     error: {
-      color: "red",
-      marginBottom: "1rem",
-      textAlign: "center",
+      color: "#dc3545",
+      marginBottom: "15px",
       fontSize: "0.9rem",
+      minHeight: "1.2em", // Reserve space
     },
-    switchLink: { marginTop: "1rem", textAlign: "center", fontSize: "0.9rem" },
-    link: { color: "#007bff", cursor: "pointer", textDecoration: "underline" },
+    navLink: {
+      textDecoration: "none",
+    },
+    loginLinkText: { // Changed name for clarity
+      fontSize: "0.95rem",
+      color: "#555",
+      textDecoration: "underline",
+      cursor: "pointer",
+    },
   };
 
   return (
-    <div style={styles.container}>
-      <h2>Sign Up</h2>
-      <form onSubmit={handleSubmit} style={styles.form}>
-        {error && <p style={styles.error}>{error}</p>}
-        <input
-          type="email"
-          placeholder="Email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required
-          disabled={loading}
-          style={styles.input}
+    <div style={styles.pageContainer}>
+      <div style={styles.card}>
+        <img
+          src="/icons/giftPin.png" // Path relative to 'public'
+          alt="App Logo"
+          style={styles.logo}
         />
-        <input
-          type="password"
-          placeholder="Password (min. 6 characters)"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-          disabled={loading}
-          style={styles.input}
-        />
-        <input
-          type="password"
-          placeholder="Confirm Password"
-          value={confirmPassword}
-          onChange={(e) => setConfirmPassword(e.target.value)}
-          required
-          disabled={loading}
-          style={styles.input}
-        />
-        <button type="submit" style={styles.button} disabled={loading}>
-          {loading ? "Signing Up..." : "Sign Up"}
-        </button>
-      </form>
-      <div style={styles.switchLink}>
-        Already have an account?{" "}
-        {/* Ensure switchToLogin is passed as a prop */}
-        <NavLink to={"/Login"}>
-          <span
-            onClick={!loading ? switchToLogin : undefined}
-            style={{ ...styles.link, cursor: loading ? "default" : "pointer" }}
-          >
-            Login
-          </span>
+
+        <form onSubmit={handleSubmit} style={styles.form}>
+          <div style={styles.error}>{error && <p>{error}</p>}</div>
+
+          <input
+            type="email"
+            placeholder="Email..." // Placeholder text from image
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+            disabled={loading}
+            style={styles.input}
+          />
+          {/* --- Add Username Input --- */}
+          <input
+            type="text"
+            placeholder="name..." // Placeholder text from image
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            required
+            disabled={loading}
+            style={styles.input}
+          />
+          {/* --- End Username Input --- */}
+          <input
+            type="password"
+            placeholder="Password..." // Placeholder text from image
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            disabled={loading}
+            style={styles.input}
+          />
+          <input
+            type="password"
+            placeholder="Confirm Password..." // Added placeholder
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            required
+            disabled={loading}
+            style={styles.input}
+          />
+          <button type="submit" style={styles.button} disabled={loading}>
+            {loading ? "Signing Up..." : "Sign Up"}
+          </button>
+        </form>
+
+        {/* Link to Login Page */}
+        <NavLink to="/login" style={styles.navLink}>
+          <span style={styles.loginLinkText}>Login</span>
         </NavLink>
       </div>
     </div>

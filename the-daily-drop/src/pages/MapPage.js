@@ -22,7 +22,7 @@ import {
   getDownloadURL,
 } from "firebase/storage";
 import { db, storage, auth } from "../firebase"; // Ensure auth is imported correctly
-import { FaTrophy } from "react-icons/fa"; // Keep your icon import
+import { FaTrophy, FaLocationArrow } from "react-icons/fa"; // Keep your icon import
 
 // Import Components
 import MapComponent from "../components/MapComponent";
@@ -390,6 +390,27 @@ function MapPage() {
     setIsLeaderboardOpen(false);
   };
 
+  // --- Map Interaction Handlers ---
+  // --- Map Interaction Handlers ---
+  const handleRecenterMap = () => {
+    // Add a log to confirm function execution
+    console.log(
+      "handleRecenterMap called. Current userPosition:",
+      userPosition
+    );
+
+    if (userPosition) {
+      console.log("Attempting to set center to:", userPosition);
+      // Create a NEW object reference using spread syntax
+      setCurrentCenter({ ...userPosition });
+    } else {
+      console.warn("User position not available to recenter.");
+      alert(
+        "Your current location is not available yet. Please wait or check permissions."
+      );
+    }
+  };
+
   // --- Render ---
   return (
     // Added overflow: hidden to prevent body scroll when leaderboard is open
@@ -404,7 +425,6 @@ function MapPage() {
       {/* Logout Button */}
       <div style={{ position: "absolute", top: 10, right: 10, zIndex: 10 }}>
         <button onClick={handleLogout} className="logout-button">
-          {" "}
           {/* Added class for potential styling */}
           Log Out
         </button>
@@ -432,7 +452,28 @@ function MapPage() {
       >
         <FaTrophy color="white" size={24} /> {/* White icon */}
       </div>
-
+      {/* Find location Button (using Fa location) */}
+      <div
+        onClick={handleRecenterMap}
+        style={{
+          position: "absolute",
+          bottom: `calc(78px + env(safe-area-inset-bottom, 0px))`,
+          right: 14, // Adjust as needed
+          zIndex: 10, // Ensure it's above map but below leaderboard panel overlay
+          backgroundColor: "white", // Purple color from image
+          padding: "16px", // Adjust padding to control size
+          borderRadius: "50%", // Makes it circular
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          cursor: "pointer", // Add pointer cursor
+          boxShadow: "0 2px 6px rgba(0,0,0,0.3)", // Optional shadow
+        }}
+        role="button" // Accessibility
+        aria-label="Open Leaderboard"
+      >
+        <FaLocationArrow color="#1976D2" size={24} /> {/* White icon */}
+      </div>
       {/* Hidden File Input */}
       <input
         type="file"

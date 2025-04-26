@@ -109,7 +109,7 @@ function RewardDetailPopup({ isOpen, onClose, reward }) {
           />
 
           <h3 id="reward-popup-title" className="reward-popup-title">
-            ${reward.value || 0} {reward.id} Coupon
+            {reward.value || 0} {reward.name} Coupon
           </h3>
           <p className="reward-popup-expiry">
             Expires: {formatExpiryDate(reward.exp)}

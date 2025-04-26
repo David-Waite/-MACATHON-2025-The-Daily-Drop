@@ -47,7 +47,23 @@ function App() {
 
   // Display a loading message while checking authentication state
   if (loading) {
-    return <div>Checking authentication...</div>; // You can replace this with a spinner component
+    return (
+      <div
+        style={{
+          height: "100vh",
+          width: "100vw",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <img
+          src="/loadingAnimation.gif" // Make sure this image exists in /public
+          alt="loading"
+          style={{ height: "50px", width: "50px" }}
+        />
+      </div>
+    ); // You can replace this with a spinner component
   }
 
   // Once loading is false, this component renders nothing itself,

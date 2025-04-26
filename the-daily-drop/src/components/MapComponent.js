@@ -47,14 +47,19 @@ function formatTimeDifference(ms) {
   const seconds = totalSeconds % 60;
   const totalMinutes = Math.floor(totalSeconds / 60);
   const minutes = totalMinutes % 60;
-  const hours = Math.floor(totalMinutes / 60);
+  // Only show minutes and seconds for this format
+  // const hours = Math.floor(totalMinutes / 60);
 
-  let parts = [];
-  if (hours > 0) parts.push(`${hours}h`);
-  if (minutes > 0 || hours > 0) parts.push(`${minutes}m`); // Show minutes if hours > 0
-  parts.push(`${seconds}s`);
+  // let parts = [];
+  // if (hours > 0) parts.push(`${hours}h`);
+  // if (minutes > 0 || hours > 0) parts.push(`${minutes}m`); // Show minutes if hours > 0
+  // parts.push(`${seconds}s`);
+  // return `${parts.join(" ")}`;
 
-  return `${parts.join(" ")}`;
+  // Format as M:SS
+  const displayMinutes = String(minutes);
+  const displaySeconds = String(seconds).padStart(2, "0");
+  return `${displayMinutes}:${displaySeconds}`;
 }
 
 function MapComponent({
@@ -101,13 +106,11 @@ function MapComponent({
     borderWidth: 0, // No border
   };
 
+  // --- UPDATED Button Style ---
   const buttonLabelStyle = {
-    display: "block", // Make it block-level to take full width easily
-    width: "100%", // Occupy full width of its container
-    paddingTop: "8px", // Vertical padding
-    paddingBottom: "8px",
-    paddingLeft: "12px", // Horizontal padding
-    paddingRight: "12px",
+    // display: "block", // No longer block
+    // width: "100%", // No longer full width
+    padding: "10px 20px", // Adjusted padding
     // --- Conditional Background Color ---
     backgroundColor: isUploading
       ? "#a381d6" // Lighter purple when uploading (disabled look)
@@ -116,16 +119,17 @@ function MapComponent({
       : "#6F42C1", // Default purple when asking to select
     border: "none", // No border
     color: "white", // Text color
-    borderRadius: 15, // Rounded corners
+    borderRadius: "20px", // More rounded corners
     textAlign: "center", // Center the text
     // --- Conditional Cursor ---
     cursor: isUploading ? "not-allowed" : "pointer", // Indicate non-interactive state
-    fontSize: "16px", // Adjust as needed
+    fontSize: "14px", // Adjusted font size
     fontWeight: "bold", // Adjust as needed
     // --- Conditional Opacity ---
     opacity: isUploading ? 0.7 : 1, // Dim when uploading
     userSelect: "none", // Prevent text selection on clicking the label
-    boxSizing: "border-box", // Include padding/border in width calculation
+    // boxSizing: "border-box", // Not needed if not block/width 100%
+    whiteSpace: "nowrap", // Prevent text wrapping
   };
 
   const onUnmount = useCallback(() => {
@@ -158,6 +162,8 @@ function MapComponent({
         if (diff <= 0) {
           clearInterval(intervalRef.current); // Stop interval when expired
           intervalRef.current = null;
+          // Optionally call onCloseInfoWindow here if the timer expires?
+          // onInfoWindowClose();
         }
       };
 
@@ -174,20 +180,34 @@ function MapComponent({
         intervalRef.current = null;
       }
     };
-  }, [selectedDrop]); // Rerun effect when selectedDrop changes
+  }, [selectedDrop, onInfoWindowClose]); // Added onInfoWindowClose dependency if used in cleanup
 
   // --- Dynamic Map Options ---
   const mapOptions = useMemo(
     () => ({
       ...baseMapOptions,
-      draggable: !selectedDrop,
+      // Keep map draggable even when a drop is selected for this version
+      // draggable: !selectedDrop,
     }),
-    [selectedDrop]
+    [] // No dependency needed if always draggable
   );
 
   // --- OverlayView Positioning ---
-  const getPixelPositionOffset = useCallback((offsetWidth, offsetHeight) => {
-    return { x: -(offsetWidth / 2), y: -(offsetHeight + 44) };
+  const getInfoWindowOffset = useCallback((offsetWidth, offsetHeight) => {
+    // Offset for the main InfoWindow-like overlay, relative to marker anchor
+    // Adjust vertical offset slightly if needed to better position the larger box
+    return { x: -(offsetWidth / 2), y: -(offsetHeight + 50) }; // Increased vertical offset
+  }, []);
+
+  // --- Offset for the pulsing animation ---
+  const getPulseOffset = useCallback((offsetWidth, offsetHeight) => {
+    // Center the pulse div (whose size is defined in CSS)
+    // directly over the coordinate point (lat/lng).
+    // Using your fine-tuned values:
+    return {
+      x: -(offsetWidth / 2) - 30,
+      y: -(offsetHeight + 40),
+    };
   }, []);
 
   // --- Event Handler Helper ---
@@ -213,224 +233,272 @@ function MapComponent({
     url: "/icons/giftPin.png",
     scaledSize: new window.google.maps.Size(30, 40),
     origin: new window.google.maps.Point(0, 0),
+    // Anchor still defines where the *icon* is placed relative to the coordinate
     anchor: new window.google.maps.Point(15, 40),
   };
 
   return (
-    <GoogleMap
-      mapContainerStyle={containerStyle}
-      center={mapCenter}
-      zoom={zoom}
-      options={mapOptions}
-      onLoad={onLoad}
-      onUnmount={onUnmount}
-      onClick={onMapClick}
-    >
-      {/* === User Location Rendering === */}
-      {userPosition && (
-        <>
-          {typeof userAccuracy === "number" && userAccuracy > 0 && (
-            <CircleF
-              center={userPosition}
-              radius={userAccuracy}
-              options={circleOptions}
+    <>
+      {/* Style tag for pulse animation (remains the same) */}
+      <style>
+        {`
+          @keyframes pulse {
+            0% {
+              transform: scale(0.9);
+              opacity: 0.7;
+            }
+            50% {
+              transform: scale(1.3);
+              opacity: 0.3;
+            }
+            100% {
+              transform: scale(0.9);
+              opacity: 0.7;
+            }
+          }
+
+          .pulse-effect {
+            width: 60px; /* Adjust size as needed */
+            height: 60px;
+            background-color: rgba(255, 0, 100, 0.5); /* Pinkish pulse color */
+            border-radius: 50%;
+            animation: pulse 1.5s infinite ease-in-out;
+            pointer-events: none; /* Prevent pulse from intercepting clicks */
+            position: absolute; /* Needed for correct positioning via offset */
+          }
+        `}
+      </style>
+
+      <GoogleMap
+        mapContainerStyle={containerStyle}
+        center={mapCenter}
+        zoom={zoom}
+        options={mapOptions}
+        onLoad={onLoad}
+        onUnmount={onUnmount}
+        onClick={onMapClick}
+      >
+        {/* === User Location Rendering === */}
+        {userPosition && (
+          <>
+            {typeof userAccuracy === "number" && userAccuracy > 0 && (
+              <CircleF
+                center={userPosition}
+                radius={userAccuracy}
+                options={circleOptions}
+              />
+            )}
+            <MarkerF
+              position={userPosition}
+              title={"You are here"}
+              icon={userLocationIcon}
+              zIndex={5} // User marker above drops
             />
-          )}
-          <MarkerF
-            position={userPosition}
-            title={"You are here"}
-            icon={userLocationIcon}
-            zIndex={5}
-          />
-        </>
-      )}
+          </>
+        )}
 
-      {/* Drop Markers */}
-      {drops.map((drop) => (
-        <MarkerF
-          key={drop.id}
-          position={drop.position}
-          title={drop.name || "Unnamed Drop"}
-          icon={customDropIcon}
-          onClick={() => onDropClick(drop)}
-          zIndex={3}
-        />
-      ))}
+        {/* Drop Markers and their Pulses */}
+        {drops.map((drop) => (
+          // Use React.Fragment to group marker and its pulse overlay
+          <React.Fragment key={drop.id}>
+            {/* --- Pulsing effect for THIS drop (conditionally rendered) --- */}
+            {(!selectedDrop || drop.id !== selectedDrop.id) &&
+              drop.position && (
+                <OverlayViewF
+                  position={drop.position} // Position pulse at the drop's coordinate
+                  mapPaneName={OverlayView.OVERLAY_LAYER} // Render below markers
+                  getPixelPositionOffset={getPulseOffset} // Use the SIMPLIFIED offset
+                >
+                  <div className="pulse-effect"></div>
+                </OverlayViewF>
+              )}
 
-      {/* Selected Drop OverlayView */}
-      {selectedDrop && selectedDrop.position && (
-        <OverlayViewF
-          position={selectedDrop.position}
-          mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}
-          getPixelPositionOffset={getPixelPositionOffset}
-        >
-          <div
-            style={{
-              background: "white",
-              padding: "15px",
-              zIndex: 1000,
-              borderRadius: "8px",
-              boxShadow: "0 2px 7px 1px rgba(0, 0, 0, 0.3)",
-              width: "calc(100vw - 40px)",
-              height: "calc(100vw - 40px)",
+            {/* The actual Drop Marker */}
+            <MarkerF
+              position={drop.position}
+              title={drop.name || "Unnamed Drop"}
+              icon={customDropIcon} // Icon uses its own anchor point
+              onClick={() => onDropClick(drop)}
+              zIndex={3} // Drop markers above pulse, below user
+            />
+          </React.Fragment>
+        ))}
 
-              maxWidth: "600px",
-              maxHeight: "600px",
-              position: "relative",
-              overflow: "auto",
-            }}
-            onClick={stopPropagation}
-            onMouseDown={stopPropagation}
-            onMouseUp={stopPropagation}
-            onTouchStart={stopPropagation}
-            onTouchEnd={stopPropagation}
-            onPointerDown={stopPropagation}
-            onPointerUp={stopPropagation}
+        {/* Selected Drop OverlayView (InfoWindow-like) - Renders only when a drop IS selected */}
+        {selectedDrop && selectedDrop.position && (
+          <OverlayViewF
+            position={selectedDrop.position}
+            mapPaneName={OverlayView.FLOAT_PANE} // Render above most things
+            getPixelPositionOffset={getInfoWindowOffset} // Use updated offset for this overlay
           >
-            {/* Close button */}
-            <button
-              onClick={onInfoWindowClose}
-              style={{
-                position: "absolute",
-                top: "0px",
-                right: "0px",
-                background: "transparent",
-                border: "none",
-                fontSize: "18px",
-                fontWeight: "bold",
-                color: "#555",
-                cursor: "pointer",
-                padding: "5px",
-                lineHeight: "1",
-                zIndex: 1,
-              }}
-              aria-label="Close"
-            >
-              &times;
-            </button>
-
-            {/* Content */}
+            {/* --- Container with updated styles --- */}
             <div
               style={{
-                display: "flex",
-                flexDirection: "column",
-                justifyContent: "space-between",
-                height: "100%",
+                background: "white",
+                padding: "20px", // Increased padding
+                borderRadius: "16px", // More rounded corners
+                boxShadow: "0 4px 15px rgba(0, 0, 0, 0.2)", // Softer shadow
+                // Use min/max width for better responsiveness
+                width: "85vw", // Use viewport width percentage
+                maxWidth: "380px", // Max width constraint
+                minWidth: "280px", // Min width constraint
+                position: "relative",
+                // Removed fixed height, let content determine height
+                // height: "calc(100vw - 40px)",
+                // maxHeight: "600px",
+                overflow: "hidden", // Hide overflow initially
+                pointerEvents: "auto", // Ensure this overlay IS interactive
+                display: "flex", // Use flexbox for layout
+                flexDirection: "column", // Stack elements vertically
+                gap: "12px", // Add gap between elements
               }}
+              // Stop propagation handlers remain the same
+              onClick={stopPropagation}
+              onMouseDown={stopPropagation}
+              onMouseUp={stopPropagation}
+              onTouchStart={stopPropagation}
+              onTouchEnd={stopPropagation}
+              onPointerDown={stopPropagation}
+              onPointerUp={stopPropagation}
             >
-              <div>
-                {selectedDrop.imageUrl && (
-                  <img
-                    src={selectedDrop.imageUrl}
-                    alt={selectedDrop.name || "Drop image"}
-                    style={{
-                      width: "100%",
-                      height: "calc(100vw - 140px)",
-                      maxHeight: "500px",
-                      objectFit: "cover",
-                      marginBottom: "10px",
-                      borderRadius: "4px",
-                      display: "block",
-                    }}
-                    onError={(e) => {
-                      e.target.style.display = "none";
-                    }}
-                  />
-                )}
-                <h4
+              {/* Close button (Keep as is) */}
+              <button
+                onClick={onInfoWindowClose}
+                style={{
+                  position: "absolute",
+                  top: "8px", // Adjust position slightly
+                  right: "8px",
+                  background: "transparent",
+                  border: "none",
+                  fontSize: "22px", // Slightly larger
+                  fontWeight: "bold",
+                  color: "#aaa", // Lighter color
+                  cursor: "pointer",
+                  padding: "5px",
+                  lineHeight: "1",
+                  zIndex: 1, // Ensure button is clickable above content
+                }}
+                aria-label="Close"
+              >
+                &times;
+              </button>
+
+              {/* --- Top Section: Name and Reward --- */}
+              <div style={{ textAlign: "center", paddingRight: "20px" }}>
+                {" "}
+                {/* Add padding to avoid overlap with close btn */}
+                <h2
                   style={{
                     marginTop: 0,
-
-                    marginBottom: "8px",
-                    fontSize: "16px", // Increased font size
-                    fontWeight: "100",
-                    paddingRight: "25px",
+                    marginBottom: "4px", // Reduced margin
+                    fontSize: "2em", // Larger font size for name
+                    fontWeight: "bold", // Bold name
+                    color: "#495057",
                   }}
                 >
                   {selectedDrop.name || "Unnamed Drop"}
-                </h4>
-              </div>
-              <div>
-                <div
-                  style={{
-                    display: "flex",
-
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                  }}
-                >
-                  <div
+                </h2>
+                {/* Display Reward */}
+                {selectedDrop.reward && (
+                  <p
                     style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      color: "#495057",
+                      marginTop: 0,
+                      marginBottom: "10px", // Space below reward
+                      fontSize: "0.9em", // Standard size for reward text
+                      color: "#495057", // Grey color for reward
+
                     }}
                   >
-                    <p
-                      style={{
-                        fontSize: "24px",
-                        fontWeight: 1000,
-                      }}
-                    >
-                      {countdownText || "Loading..."}{" "}
-                      {/* Display countdown state or loading */}
-                    </p>
-                  </div>
-                  <div>
-                    {/* 1. Hidden actual file input */}
-                    <input
-                      type="file"
-                      accept="image/*" // Only allow image files
-                      onChange={onImageChange} // Calls parent handler when a file is selected
-                      id="hidden-file-input" // Unique ID for the label to reference
-                      style={hiddenInputStyle} // Apply styles to hide it
-                      disabled={isUploading} // Disable if uploading
-                      // Note: If you have issues re-selecting the *same* file, you might need
-                      // to clear this input's value when `selectedImageFile` becomes null.
-                      // This usually involves a ref and an effect, but often just clearing
-                      // the parent state (`selectedImageFile = null`) is sufficient.
-                    />
+                    Reward: {selectedDrop.reward}
+                  </p>
+                )}
+              </div>
 
-                    {/* 2. Styled Label acting as the button */}
-                    <label
-                      // Link to input only if no file is selected AND not uploading
-                      htmlFor={
-                        !selectedImageFile && !isUploading
-                          ? "hidden-file-input"
-                          : undefined
-                      }
-                      style={buttonLabelStyle} // Apply the button-like styles
-                      // Trigger capture ONLY if a file IS selected AND not uploading
-                      onClick={
-                        selectedImageFile && !isUploading
-                          ? () => onCaptureAttempt(selectedDrop)
-                          : undefined
-                      }
-                      role="button" // Semantic role
-                      aria-disabled={isUploading} // Accessibility state
-                      tabIndex={isUploading ? -1 : 0} // Control focusability
-                    >
-                      {/* --- Conditional Button Text --- */}
-                      {
-                        isUploading
-                          ? "Uploading..." // Upload in progress text
-                          : selectedImageFile
-                          ? "Capture with Photo" // File selected, ready to capture text
-                          : "Select Photo" // Initial state text
-                      }
-                    </label>
-                    {/* 3. Optional: Display selected file name below the button */}
-                  </div>
+              {/* --- Middle Section: Image --- */}
+              {selectedDrop.imageUrl && (
+                <img
+                  src={selectedDrop.imageUrl}
+                  alt={selectedDrop.name || "Drop image"}
+                  style={{
+                    width: "100%", // Make image fill container width
+                    // Let height be auto based on aspect ratio, but limit it
+                    maxHeight: "calc(min(50vh, 300px))", // Limit height relative to viewport or fixed max
+                    objectFit: "cover", // Cover the area
+                    borderRadius: "8px", // Rounded corners for image
+                    display: "block", // Remove extra space below image
+                    // marginBottom: "10px", // Gap handles spacing now
+                  }}
+                  onError={(e) => {
+                    e.target.style.display = "none";
+                  }}
+                />
+              )}
+
+              {/* --- Bottom Section: Countdown and Button --- */}
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center", // Vertically align items
+                  justifyContent: "space-between", // Space out timer and button
+                  marginTop: "5px", // Add some space above this section
+                }}
+              >
+                {/* Countdown Timer */}
+                <div
+                  style={{
+                    color: "#333",
+                    fontSize: "2.2em", // Larger font size for timer
+                    fontWeight: "bold", // Bold timer
+                    fontVariantNumeric: "tabular-nums", // Keep numbers aligned
+                  }}
+                >
+                  {countdownText || "..."}{" "}
+                  {/* Display countdown state or loading */}
+                </div>
+
+                {/* Action Button Area */}
+                <div>
+                  {/* Hidden actual file input */}
+                  <input
+                    type="file"
+                    accept="image/*" // Only allow image files
+                    onChange={onImageChange} // Calls parent handler when a file is selected
+                    id="hidden-file-input" // Unique ID for the label to reference
+                    style={hiddenInputStyle} // Apply styles to hide it
+                    disabled={isUploading} // Disable if uploading
+                  />
+
+                  {/* Styled Label acting as the button */}
+                  <label
+                    htmlFor={
+                      !selectedImageFile && !isUploading
+                        ? "hidden-file-input"
+                        : undefined
+                    }
+                    style={buttonLabelStyle} // Apply the UPDATED button styles
+                    onClick={
+                      selectedImageFile && !isUploading
+                        ? () => onCaptureAttempt(selectedDrop)
+                        : undefined
+                    }
+                    role="button" // Semantic role
+                    aria-disabled={isUploading} // Accessibility state
+                    tabIndex={isUploading ? -1 : 0} // Control focusability
+                  >
+                    {/* Conditional Button Text */}
+                    {isUploading
+                      ? "Uploading..."
+                      : selectedImageFile
+                      ? "Capture" // Shorter text
+                      : "Take Photo"}
+                  </label>
                 </div>
               </div>
             </div>
-
-            {/* --- END UPDATE --- */}
-          </div>
-        </OverlayViewF>
-      )}
-    </GoogleMap>
+          </OverlayViewF>
+        )}
+      </GoogleMap>
+    </>
   );
 }
 

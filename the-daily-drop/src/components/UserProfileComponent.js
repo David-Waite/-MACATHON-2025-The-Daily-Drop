@@ -445,7 +445,7 @@ function UserProfileComponent({
                         </div>
                         <div className="reward-details">
                           <div className="reward-title">
-                            ${reward.value || 0} {reward.name} Coupon
+                            {reward.value || 0} {reward.name} Coupon
                           </div>
                           <div className="reward-expiry">
                             Expire: {formatExpiryDate(reward.exp)}

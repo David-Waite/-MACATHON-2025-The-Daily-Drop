@@ -132,6 +132,11 @@ function LoginPage() {
     <div style={styles.pageContainer}>
       <div style={styles.card}>
         <img src="/icons/giftPin.png" alt="App Logo" style={styles.logo} />
+        <p>
+          <strong>Admin credentials</strong> <br /> Email: Admin@gamil.com
+          <br />
+          Password: Admin1
+        </p>
 
         <form onSubmit={handleSubmit} style={styles.form}>
           <div style={styles.error}>{error && <p>{error}</p>}</div>
